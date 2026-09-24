@@ -55,8 +55,38 @@ class CacheKey {
 		if ( ! empty( $config['separate_mobile'] ) && self::is_mobile() ) {
 			$variant = '-mobile';
 		}
+		$variant .= self::cart_variant( $config );
 
 		return new self( $host, $path, $variant );
+	}
+
+	/**
+	 * On themes that render cart data server-side (probe verdict: not
+	 * shared-cacheable), visitors with a cart get their own cache entry
+	 * instead of no cache at all. Keyed on the WooCommerce cart hash —
+	 * which changes exactly when cart contents change — plus the session
+	 * cookie, so entries are per-visitor and never leak personalization.
+	 *
+	 * @return string ''|-c<hash>
+	 */
+	public static function cart_variant( array $config ) {
+		if ( empty( $config['cart_variant_cache'] )
+			|| ! empty( $config['cart_cache_ok'] )
+			|| empty( $config['woocommerce_protection'] )
+			|| empty( $_COOKIE['woocommerce_items_in_cart'] )
+			|| empty( $_COOKIE['woocommerce_cart_hash'] ) ) {
+			return '';
+		}
+
+		$session = '';
+		foreach ( $_COOKIE as $name => $value ) {
+			if ( 0 === strpos( $name, 'wp_woocommerce_session_' ) ) {
+				$session = (string) $value;
+				break;
+			}
+		}
+
+		return '-c' . substr( md5( $_COOKIE['woocommerce_cart_hash'] . '|' . $session ), 0, 12 );
 	}
 
 	/** @return CacheKey|null Key for an arbitrary URL of this site (purge/lookup use). */

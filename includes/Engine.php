@@ -107,7 +107,9 @@ class Engine {
 	}
 
 	private function maybe_store( CacheKey $key, $buffer ) {
-		if ( strlen( $buffer ) < 255 || ! $this->gate->response_ok( $buffer ) ) {
+		$cart_entry = false !== strpos( $key->variant, '-c' );
+
+		if ( strlen( $buffer ) < 255 || ! $this->gate->response_ok( $buffer, $cart_entry ) ) {
 			$this->driver->mark_uncacheable();
 			// The reason is gold when debugging "why is nothing cached":
 			// curl -I and the header says exactly which check refused.
@@ -131,6 +133,15 @@ class Engine {
 		$capped = false;
 		if ( self::contains_nonce( $html ) ) {
 			$cap = max( HOUR_IN_SECONDS, (int) apply_filters( 'reallycache_nonce_ttl', 10 * HOUR_IN_SECONDS ) );
+			if ( $ttl <= 0 || $ttl > $cap ) {
+				$ttl    = $cap;
+				$capped = true;
+			}
+		}
+		// Private per-cart entries are short-lived: the cart hash keys the
+		// contents, but totals can shift (coupons, stock) — keep them fresh.
+		if ( $cart_entry ) {
+			$cap = max( MINUTE_IN_SECONDS, (int) apply_filters( 'reallycache_cart_ttl', 15 * MINUTE_IN_SECONDS ) );
 			if ( $ttl <= 0 || $ttl > $cap ) {
 				$ttl    = $cap;
 				$capped = true;

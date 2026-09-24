@@ -71,8 +71,14 @@ class Gate {
 		return true;
 	}
 
-	/** Full-WordPress checks, run against the rendered page. */
-	public function response_ok( $buffer ) {
+	/**
+	 * Full-WordPress checks, run against the rendered page.
+	 *
+	 * @param bool $cart_entry True when storing into a private per-cart
+	 *                         variant: WooCommerce re-setting its cart
+	 *                         cookies is expected there, not personal.
+	 */
+	public function response_ok( $buffer, $cart_entry = false ) {
 		global $wp_query;
 
 		$this->reject_reason = '';
@@ -103,7 +109,7 @@ class Gate {
 			// So only a cookie that actually marks a logged-in / cart /
 			// comment state blocks caching; benign ones are ignored (and
 			// stripped from the stored headers so they are never replayed).
-			if ( 0 === stripos( $header, 'Set-Cookie:' ) && $this->set_cookie_is_personal( $header ) ) {
+			if ( 0 === stripos( $header, 'Set-Cookie:' ) && $this->set_cookie_is_personal( $header, $cart_entry ) ) {
 				return $this->reject( 'set-cookie' );
 			}
 		}
@@ -183,11 +189,15 @@ class Gate {
 	 * cache at request time. Cookies that imply the page content itself
 	 * is personal (login, post password, cart contents) still block.
 	 */
-	private function set_cookie_is_personal( $header ) {
+	private function set_cookie_is_personal( $header, $cart_entry = false ) {
 		$value = trim( substr( $header, strlen( 'Set-Cookie:' ) ) );
 		$name  = strtolower( trim( strtok( $value, '=' ) ) );
 
-		$personal_prefixes = [ 'wordpress_logged_in_', 'wordpress_sec_', 'comment_author_', 'wp-postpass_', 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'edd_items_in_cart', 'edd_cart_token' ];
+		$personal_prefixes = [ 'wordpress_logged_in_', 'wordpress_sec_', 'comment_author_', 'wp-postpass_', 'edd_items_in_cart', 'edd_cart_token' ];
+		if ( ! $cart_entry ) {
+			$personal_prefixes[] = 'woocommerce_items_in_cart';
+			$personal_prefixes[] = 'woocommerce_cart_hash';
+		}
 
 		foreach ( $personal_prefixes as $prefix ) {
 			if ( 0 === strpos( $name, $prefix ) ) {
@@ -213,12 +223,13 @@ class Gate {
 	private function has_bypass_cookie() {
 		$prefixes = (array) ( $this->config['bypass_cookies'] ?? [] );
 		if ( ! empty( $this->config['woocommerce_protection'] ) && empty( $this->config['cart_cache_ok'] ) ) {
-			// Only an actual cart forces live pages (items_in_cart exists
-			// exactly while the cart has contents — the WP Rocket
-			// approach). And when the cart probe has verified the theme
-			// renders identical HTML with a cart (fragments-based), even
-			// that bypass is dropped: cart holders get cached pages too.
-			$prefixes = array_merge( $prefixes, [ 'woocommerce_items_in_cart' ] );
+			// Cart holders on a server-rendered-cart theme get a private
+			// per-cart cache entry (see CacheKey::cart_variant) — only
+			// when even that is impossible (no cart-hash cookie yet, or
+			// the mode is off) do they fall back to live pages.
+			if ( '' === CacheKey::cart_variant( $this->config ) ) {
+				$prefixes = array_merge( $prefixes, [ 'woocommerce_items_in_cart' ] );
+			}
 		}
 
 		foreach ( array_keys( $_COOKIE ) as $name ) {

@@ -259,6 +259,7 @@ class RestApi {
 			'health'      => $this->health(),
 			'woo_active'  => class_exists( 'WooCommerce' ),
 			'woo_cart_cache' => $config['cart_cache_ok'] ?? null,
+			'woo_cart_variant' => ! empty( $config['cart_variant_cache'] ),
 			'warm'       => Warmer::status(),
 			'webp'       => Media\Webp::status(),
 			'redis'      => Redis\Manager::status(),

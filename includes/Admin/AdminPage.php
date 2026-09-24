@@ -253,6 +253,7 @@ class AdminPage {
 			'row_daily_hour_desc' => __( 'Site timezone. Pick a quiet hour — the rebuild runs gradually and gently', 'reallycache' ),
 			'woo_cart_ok'      => __( '✓ Theme verified: identical HTML with a cart — visitors with items in their cart get cached pages too', 'reallycache' ),
 			'woo_cart_safe'    => __( 'This theme renders cart data server-side, so visitors with items in their cart get live pages (safe mode). Re-checked weekly.', 'reallycache' ),
+			'woo_cart_variant' => __( '✓ This theme renders cart data server-side — so each cart state gets its own short-lived private cache entry: correct cart, cached speed', 'reallycache' ),
 			'woo_cart_probing' => __( 'Checking whether the theme supports cached pages for visitors with a cart…', 'reallycache' ),
 			'btn_cart_probe'   => __( 'Check now', 'reallycache' ),
 			'row_woo'         => __( 'WooCommerce protection', 'reallycache' ),

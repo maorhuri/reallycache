@@ -322,8 +322,18 @@
 
 	function wooCartNote() {
 		var v     = state.woo_cart_cache;
-		var text  = null === v || undefined === v ? t( 'woo_cart_probing' ) : ( v ? t( 'woo_cart_ok' ) : t( 'woo_cart_safe' ) );
-		var style = 'padding-block-end:10px' + ( true === v ? ';color:var(--rc-ok)' : '' );
+		var text  = t( 'woo_cart_probing' );
+		var green = false;
+
+		if ( true === v ) {
+			text  = t( 'woo_cart_ok' );
+			green = true;
+		} else if ( false === v ) {
+			text  = state.woo_cart_variant ? t( 'woo_cart_variant' ) : t( 'woo_cart_safe' );
+			green = !! state.woo_cart_variant;
+		}
+
+		var style = 'padding-block-end:10px' + ( green ? ';color:var(--rc-ok)' : '' );
 
 		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
 	}
