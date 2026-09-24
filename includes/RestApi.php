@@ -21,6 +21,7 @@ class RestApi {
 			[ 'POST', '/settings', 'save_settings' ],
 			[ 'POST', '/purge', 'purge' ],
 			[ 'POST', '/warm', 'warm' ],
+			[ 'POST', '/warm-stop', 'warm_stop' ],
 			[ 'POST', '/webp-scan', 'webp_scan' ],
 			[ 'POST', '/dev-mode', 'dev_mode' ],
 		];
@@ -102,6 +103,12 @@ class RestApi {
 
 	public function warm() {
 		Warmer::seed_site();
+
+		return rest_ensure_response( $this->state() );
+	}
+
+	public function warm_stop() {
+		Warmer::stop();
 
 		return rest_ensure_response( $this->state() );
 	}

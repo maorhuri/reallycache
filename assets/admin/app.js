@@ -199,6 +199,7 @@
 			'<div class="rc-progress-row">' +
 				'<span class="rc-progress-label">' + esc( t( 'warm_now' ) ) + ' <strong data-el="warm-current">' + esc( pathOf( w.current ) ) + '</strong></span>' +
 				'<span class="rc-progress-count" data-el="warm-count">' + w.done + '/' + w.total + '</span>' +
+				'<button type="button" class="rc-progress-stop" data-action="warm-stop" title="' + esc( t( 'btn_stop_warm' ) ) + '">' + icon( 'x' ) + '<span>' + esc( t( 'btn_stop' ) ) + '</span></button>' +
 			'</div>' +
 			'<div class="rc-bar"><div class="rc-bar-fill" data-el="warm-fill" style="width:' + pct + '%"></div></div>' +
 		'</div>';
@@ -632,6 +633,16 @@
 				break;
 			case 'webp-scan':
 				doWebpScan( target );
+				break;
+			case 'warm-stop':
+				target.disabled = true;
+				api( 'warm-stop', {} ).then( function ( payload ) {
+					applyState( payload );
+					toast( t( 'toast_warm_stopped' ), true );
+				} ).catch( function () {
+					target.disabled = false;
+					toast( t( 'toast_error' ), false );
+				} );
 				break;
 			case 'dev':
 				doDevMode( target, target.dataset.duration );

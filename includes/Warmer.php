@@ -203,6 +203,17 @@ class Warmer {
 		];
 	}
 
+	/** Stop a running warm-up: drop the queue; an in-flight batch finishes. */
+	public static function stop() {
+		delete_option( self::QUEUE_OPTION );
+		wp_clear_scheduled_hook( self::TICK_HOOK );
+
+		$state            = self::state();
+		$state['current'] = '';
+		$state['updated'] = time();
+		update_option( self::STATE_OPTION, $state, false );
+	}
+
 	public static function reset() {
 		delete_option( self::QUEUE_OPTION );
 		delete_option( self::STATE_OPTION );
