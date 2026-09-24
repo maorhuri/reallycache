@@ -49,7 +49,7 @@ class AdminPage {
 			'locale'  => str_replace( '_', '-', get_user_locale() ),
 			'brand'   => [
 				'hosting'  => apply_filters( 'reallycache_hosting_url', 'https://mvn.co.il/?utm_source=reallycache&utm_medium=plugin' ),
-				'whatsapp' => apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/972000000000' ),
+				'whatsapp' => apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/97237722100' ),
 			],
 			'i18n'    => self::strings(),
 		] );
