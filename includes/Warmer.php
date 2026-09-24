@@ -23,6 +23,7 @@ class Warmer {
 	const TICK_HOOK    = 'reallycache_warm_tick';
 	const DAILY_HOOK   = 'reallycache_daily_warm';
 	const LOCK         = 'reallycache_warm_lock';
+	const STOP_FLAG    = 'reallycache_warm_stopped';
 
 	/**
 	 * Start a full-site warm-up. The queue never holds the whole site:
@@ -31,6 +32,8 @@ class Warmer {
 	 * bounded option size. Already-fresh pages are skipped at fetch time.
 	 */
 	public static function seed_site() {
+		delete_option( self::STOP_FLAG );
+
 		$config = Config::load();
 		$max    = max( 0, (int) ( $config['warm_max'] ?? 500 ) );
 
@@ -75,6 +78,14 @@ class Warmer {
 	 * anything was added or seeding is still in progress.
 	 */
 	public static function refill() {
+		// The stop flag lives OUTSIDE the state blob on purpose: a worker
+		// mid-batch re-writes the whole state it read earlier, which used
+		// to resurrect a stopped seed (read old phase → write it back).
+		// A separate option cannot be clobbered that way.
+		if ( get_option( self::STOP_FLAG ) ) {
+			return false;
+		}
+
 		$state = self::state();
 		$seed  = is_array( $state['seed'] ?? null ) ? $state['seed'] : null;
 		if ( ! $seed || 'done' === $seed['phase'] ) {
@@ -335,7 +346,8 @@ class Warmer {
 	public static function status() {
 		$state   = self::state();
 		$queued  = self::queued();
-		$seeding = is_array( $state['seed'] ?? null ) && 'done' !== ( $state['seed']['phase'] ?? 'done' );
+		$seeding = ! get_option( self::STOP_FLAG )
+			&& is_array( $state['seed'] ?? null ) && 'done' !== ( $state['seed']['phase'] ?? 'done' );
 
 		return [
 			'done'    => (int) $state['done'],
@@ -385,6 +397,7 @@ class Warmer {
 
 	/** Stop a running warm-up: drop the queue; an in-flight batch finishes. */
 	public static function stop() {
+		update_option( self::STOP_FLAG, (string) time(), false );
 		delete_option( self::QUEUE_OPTION );
 		wp_clear_scheduled_hook( self::TICK_HOOK );
 
@@ -392,7 +405,7 @@ class Warmer {
 		$state['current'] = '';
 		$state['updated'] = time();
 		if ( is_array( $state['seed'] ?? null ) ) {
-			$state['seed']['phase'] = 'done'; // No more refills.
+			$state['seed']['phase'] = 'done';
 		}
 		update_option( self::STATE_OPTION, $state, false );
 	}
@@ -402,6 +415,7 @@ class Warmer {
 		delete_option( self::STATE_OPTION );
 		delete_option( self::LOCK );
 		delete_option( self::TOKEN_OPTION ); // Rotate the worker token.
+		delete_option( self::STOP_FLAG );
 		wp_clear_scheduled_hook( self::TICK_HOOK );
 		wp_clear_scheduled_hook( self::DAILY_HOOK );
 	}

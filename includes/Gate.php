@@ -212,7 +212,12 @@ class Gate {
 	private function has_bypass_cookie() {
 		$prefixes = (array) ( $this->config['bypass_cookies'] ?? [] );
 		if ( ! empty( $this->config['woocommerce_protection'] ) ) {
-			$prefixes = array_merge( $prefixes, [ 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'wp_woocommerce_session_' ] );
+			// Only an actual cart forces live pages. The session cookie
+			// alone lives 48h (and some plugins spawn one for everyone),
+			// so keying on it would lock visitors out of the cache for
+			// days after their cart emptied. items_in_cart exists exactly
+			// while the cart has contents — the WP Rocket approach.
+			$prefixes = array_merge( $prefixes, [ 'woocommerce_items_in_cart' ] );
 		}
 
 		foreach ( array_keys( $_COOKIE ) as $name ) {
