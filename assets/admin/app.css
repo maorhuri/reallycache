@@ -1,0 +1,781 @@
+/**
+ * ReallyCache admin app
+ * Dark canvas, pink accent family. RTL-first via logical properties.
+ */
+
+#reallycache-app {
+	/* ---- Brand tokens ---- */
+	--rc-bg: #111111;
+	--rc-surface: #1E2226;
+	--rc-surface-2: #252B30;
+	--rc-surface-3: #2C333A;
+	--rc-border: rgba(255, 255, 255, 0.07);
+	--rc-border-strong: rgba(255, 255, 255, 0.13);
+
+	--rc-accent: #FF217F;
+	--rc-accent-hover: #D5449B;
+	--rc-accent-active: #BA3275;
+	--rc-accent-mid: #D34298;
+	--rc-accent-soft: #FFA5C5;
+	--rc-accent-tint: rgba(255, 33, 127, 0.10);
+	--rc-accent-tint-strong: rgba(255, 33, 127, 0.18);
+
+	--rc-text: #F2F4F6;
+	--rc-text-2: #AEB6BD;
+	--rc-text-3: #78828B;
+	--rc-on-accent: #16060D;
+
+	--rc-ok: #3DDC97;
+	--rc-ok-tint: rgba(61, 220, 151, 0.12);
+	--rc-warn: #FFB224;
+	--rc-warn-tint: rgba(255, 178, 36, 0.12);
+	--rc-danger: #FF5A65;
+	--rc-danger-tint: rgba(255, 90, 101, 0.12);
+
+	--rc-radius: 14px;
+	--rc-radius-sm: 9px;
+	--rc-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.28);
+	--rc-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+	font-family: var(--rc-font);
+	color: var(--rc-text);
+	max-width: 1040px;
+	width: calc(100% - 40px);
+	margin: 20px auto 40px;
+	font-size: 14px;
+	line-height: 1.55;
+	-webkit-font-smoothing: antialiased;
+}
+
+#reallycache-app *,
+#reallycache-app *::before,
+#reallycache-app *::after {
+	box-sizing: border-box;
+}
+
+/* ---- Canvas ---- */
+.rc-canvas {
+	position: relative;
+	background: var(--rc-bg);
+	border-radius: 20px;
+	box-shadow: var(--rc-shadow);
+	overflow: hidden;
+	isolation: isolate;
+}
+
+.rc-canvas::before {
+	/* Ambient brand glow, purely decorative */
+	content: "";
+	position: absolute;
+	inset-block-start: -220px;
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	width: 720px;
+	height: 420px;
+	background: radial-gradient(closest-side, rgba(255, 33, 127, 0.16), transparent 70%);
+	pointer-events: none;
+	z-index: 0;
+}
+
+.rc-canvas > * {
+	position: relative;
+	z-index: 1;
+}
+
+/* ---- Top bar ---- */
+.rc-topbar {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 22px 28px;
+	border-block-end: 1px solid var(--rc-border);
+}
+
+.rc-logo {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.rc-logo-mark {
+	width: 40px;
+	height: 40px;
+	flex: none;
+	color: #ffffff;
+	border-radius: 11px;
+	background: linear-gradient(135deg, var(--rc-accent) 0%, var(--rc-accent-active) 100%);
+	display: grid;
+	place-items: center;
+	box-shadow: 0 4px 14px rgba(255, 33, 127, 0.35);
+}
+
+.rc-logo-mark svg {
+	width: 22px;
+	height: 22px;
+	display: block;
+}
+
+.rc-logo-name {
+	font-size: 18px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	white-space: nowrap;
+}
+
+.rc-logo-name em {
+	font-style: normal;
+	color: var(--rc-accent-soft);
+}
+
+.rc-version {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--rc-text-3);
+	background: var(--rc-surface-2);
+	border: 1px solid var(--rc-border);
+	border-radius: 999px;
+	padding: 2px 9px;
+}
+
+.rc-topbar-spacer {
+	flex: 1;
+}
+
+/* ---- Status pill (icon + label, never color alone) ---- */
+.rc-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12.5px;
+	font-weight: 600;
+	border-radius: 999px;
+	padding: 5px 13px;
+	border: 1px solid transparent;
+}
+
+.rc-pill-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: currentColor;
+	flex: none;
+}
+
+.rc-pill--ok {
+	color: var(--rc-ok);
+	background: var(--rc-ok-tint);
+	border-color: rgba(61, 220, 151, 0.25);
+}
+
+.rc-pill--warn {
+	color: var(--rc-warn);
+	background: var(--rc-warn-tint);
+	border-color: rgba(255, 178, 36, 0.25);
+}
+
+.rc-pill--off {
+	color: var(--rc-text-2);
+	background: var(--rc-surface-2);
+	border-color: var(--rc-border-strong);
+}
+
+/* ---- Buttons ---- */
+.rc-btn {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	font-family: inherit;
+	font-size: 13.5px;
+	font-weight: 600;
+	line-height: 1;
+	border-radius: var(--rc-radius-sm);
+	padding: 11px 18px;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.06s ease;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.rc-btn:active {
+	transform: translateY(1px);
+}
+
+.rc-btn:focus-visible {
+	outline: 2px solid var(--rc-accent-soft);
+	outline-offset: 2px;
+}
+
+.rc-btn[disabled] {
+	opacity: 0.55;
+	cursor: default;
+	pointer-events: none;
+}
+
+.rc-btn svg {
+	width: 16px;
+	height: 16px;
+	flex: none;
+}
+
+.rc-btn--primary {
+	background: var(--rc-accent);
+	color: var(--rc-on-accent);
+}
+
+.rc-btn--primary:hover {
+	background: var(--rc-accent-hover);
+	color: #fff;
+}
+
+.rc-btn--primary:active {
+	background: var(--rc-accent-active);
+}
+
+.rc-btn--ghost {
+	background: transparent;
+	color: var(--rc-text);
+	border-color: var(--rc-border-strong);
+}
+
+.rc-btn--ghost:hover {
+	border-color: var(--rc-accent-mid);
+	color: var(--rc-accent-soft);
+}
+
+.rc-btn--subtle {
+	background: var(--rc-surface-2);
+	color: var(--rc-text-2);
+}
+
+.rc-btn--subtle:hover {
+	background: var(--rc-surface-3);
+	color: var(--rc-text);
+}
+
+.rc-btn--sm {
+	padding: 8px 13px;
+	font-size: 12.5px;
+}
+
+/* ---- Layout ---- */
+.rc-main {
+	padding: 26px 28px 30px;
+	display: grid;
+	gap: 18px;
+}
+
+/* ---- Stat tiles ---- */
+.rc-tiles {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 14px;
+}
+
+.rc-tile {
+	background: var(--rc-surface);
+	border: 1px solid var(--rc-border);
+	border-radius: var(--rc-radius);
+	padding: 16px 18px;
+	min-width: 0;
+}
+
+.rc-tile-label {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--rc-text-3);
+	margin-block-end: 7px;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+
+.rc-tile-label svg {
+	width: 14px;
+	height: 14px;
+	color: var(--rc-accent-soft);
+	flex: none;
+}
+
+.rc-tile-value {
+	font-size: 21px;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+	color: var(--rc-text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rc-tile-value small {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--rc-text-3);
+	margin-inline-start: 3px;
+}
+
+.rc-tile-sub {
+	font-size: 11.5px;
+	color: var(--rc-text-3);
+	margin-block-start: 3px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* ---- Cards ---- */
+.rc-card {
+	background: var(--rc-surface);
+	border: 1px solid var(--rc-border);
+	border-radius: var(--rc-radius);
+}
+
+.rc-card-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 17px 20px;
+	border-block-end: 1px solid var(--rc-border);
+}
+
+.rc-card-head svg {
+	width: 17px;
+	height: 17px;
+	color: var(--rc-accent);
+	flex: none;
+}
+
+.rc-card-title {
+	font-size: 14.5px;
+	font-weight: 650;
+}
+
+.rc-card-desc {
+	font-size: 12.5px;
+	color: var(--rc-text-3);
+	margin-inline-start: auto;
+}
+
+.rc-card-body {
+	padding: 6px 20px;
+}
+
+/* ---- Setting rows ---- */
+.rc-row {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 15px 0;
+}
+
+.rc-row + .rc-row {
+	border-block-start: 1px solid var(--rc-border);
+}
+
+.rc-row--col {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 9px;
+}
+
+.rc-row-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.rc-row-title {
+	font-size: 13.5px;
+	font-weight: 600;
+	color: var(--rc-text);
+}
+
+.rc-row-desc {
+	font-size: 12.5px;
+	color: var(--rc-text-3);
+	margin-block-start: 2px;
+}
+
+/* ---- Switch ---- */
+.rc-switch {
+	position: relative;
+	display: inline-block;
+	width: 44px;
+	height: 25px;
+	flex: none;
+}
+
+.rc-switch input {
+	position: absolute;
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	cursor: pointer;
+}
+
+.rc-switch-track {
+	position: absolute;
+	inset: 0;
+	border-radius: 999px;
+	background: var(--rc-surface-3);
+	border: 1px solid var(--rc-border-strong);
+	transition: background-color 0.18s ease, border-color 0.18s ease;
+	pointer-events: none;
+}
+
+.rc-switch-track::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 3px;
+	inset-inline-start: 3px;
+	width: 17px;
+	height: 17px;
+	border-radius: 50%;
+	background: var(--rc-text-2);
+	transition: inset-inline-start 0.18s ease, background-color 0.18s ease;
+}
+
+.rc-switch input:checked ~ .rc-switch-track {
+	background: var(--rc-accent);
+	border-color: var(--rc-accent);
+}
+
+.rc-switch input:checked ~ .rc-switch-track::after {
+	inset-inline-start: 22px;
+	background: #fff;
+}
+
+.rc-switch input:focus-visible ~ .rc-switch-track {
+	outline: 2px solid var(--rc-accent-soft);
+	outline-offset: 2px;
+}
+
+/* ---- Inputs ---- */
+.rc-select,
+.rc-textarea {
+	font-family: inherit;
+	font-size: 13px;
+	color: var(--rc-text);
+	background: var(--rc-surface-2);
+	border: 1px solid var(--rc-border-strong);
+	border-radius: var(--rc-radius-sm);
+	transition: border-color 0.15s ease;
+}
+
+.rc-select {
+	padding: 9px 13px;
+	min-width: 130px;
+	cursor: pointer;
+}
+
+.rc-textarea {
+	width: 100%;
+	padding: 11px 13px;
+	min-height: 84px;
+	resize: vertical;
+	font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+	font-size: 12.5px;
+	line-height: 1.7;
+	direction: ltr;
+	text-align: start;
+}
+
+.rc-select:focus-visible,
+.rc-textarea:focus-visible {
+	outline: none;
+	border-color: var(--rc-accent);
+	box-shadow: 0 0 0 3px var(--rc-accent-tint-strong);
+}
+
+/* ---- Banner (drop-in warning etc.) ---- */
+.rc-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 11px;
+	border-radius: var(--rc-radius);
+	padding: 14px 17px;
+	font-size: 13px;
+	border: 1px solid;
+}
+
+.rc-banner svg {
+	width: 17px;
+	height: 17px;
+	flex: none;
+	margin-block-start: 1px;
+}
+
+.rc-banner--warn {
+	background: var(--rc-warn-tint);
+	border-color: rgba(255, 178, 36, 0.3);
+	color: var(--rc-warn);
+}
+
+.rc-banner--warn strong {
+	color: var(--rc-warn);
+}
+
+.rc-banner-text {
+	color: var(--rc-text-2);
+}
+
+.rc-banner-text strong {
+	color: var(--rc-text);
+}
+
+/* ---- Dev mode ---- */
+.rc-dev-actions {
+	display: flex;
+	gap: 9px;
+	flex-wrap: wrap;
+}
+
+/* ---- Promo (friendly, dismissible) ---- */
+.rc-promo {
+	position: relative;
+	border-radius: var(--rc-radius);
+	border: 1px solid rgba(255, 33, 127, 0.28);
+	background:
+		linear-gradient(115deg, var(--rc-accent-tint), rgba(186, 50, 117, 0.05) 55%, transparent),
+		var(--rc-surface);
+	padding: 18px 20px;
+	display: flex;
+	align-items: center;
+	gap: 18px;
+}
+
+.rc-promo-icon {
+	width: 42px;
+	height: 42px;
+	flex: none;
+	border-radius: 12px;
+	background: linear-gradient(135deg, var(--rc-accent), var(--rc-accent-active));
+	display: grid;
+	place-items: center;
+	color: #fff;
+}
+
+.rc-promo-icon svg {
+	width: 22px;
+	height: 22px;
+}
+
+.rc-promo-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.rc-promo-title {
+	font-size: 14px;
+	font-weight: 650;
+}
+
+.rc-promo-desc {
+	font-size: 12.5px;
+	color: var(--rc-text-2);
+	margin-block-start: 2px;
+}
+
+.rc-promo-actions {
+	display: flex;
+	gap: 9px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+.rc-promo-close {
+	appearance: none;
+	background: none;
+	border: 0;
+	color: var(--rc-text-3);
+	cursor: pointer;
+	padding: 6px;
+	border-radius: 7px;
+	line-height: 0;
+	flex: none;
+}
+
+.rc-promo-close:hover {
+	color: var(--rc-text);
+	background: var(--rc-surface-2);
+}
+
+.rc-promo-close svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* ---- Footer ---- */
+.rc-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 16px 28px;
+	border-block-start: 1px solid var(--rc-border);
+	font-size: 12px;
+	color: var(--rc-text-3);
+}
+
+.rc-footer a {
+	color: var(--rc-accent-soft);
+	text-decoration: none;
+}
+
+.rc-footer a:hover {
+	text-decoration: underline;
+}
+
+/* ---- Sticky save bar ---- */
+.rc-savebar {
+	position: sticky;
+	inset-block-end: 14px;
+	display: flex;
+	align-items: center;
+	gap: 13px;
+	background: var(--rc-surface-2);
+	border: 1px solid var(--rc-border-strong);
+	border-radius: var(--rc-radius);
+	padding: 12px 16px;
+	box-shadow: var(--rc-shadow);
+	margin: 0 8px;
+	opacity: 0;
+	transform: translateY(10px);
+	pointer-events: none;
+	transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.rc-savebar.is-visible {
+	opacity: 1;
+	transform: none;
+	pointer-events: auto;
+}
+
+.rc-savebar-text {
+	flex: 1;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--rc-text-2);
+}
+
+/* ---- Toasts ---- */
+.rc-toasts {
+	position: fixed;
+	inset-block-end: 26px;
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	display: grid;
+	gap: 8px;
+	z-index: 99999;
+}
+
+.rc-toast {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	background: var(--rc-surface-2);
+	color: var(--rc-text);
+	border: 1px solid var(--rc-border-strong);
+	border-radius: var(--rc-radius-sm);
+	padding: 11px 17px;
+	font-family: var(--rc-font);
+	font-size: 13px;
+	font-weight: 600;
+	box-shadow: var(--rc-shadow);
+	animation: rc-toast-in 0.22s ease;
+}
+
+.rc-toast svg {
+	width: 15px;
+	height: 15px;
+	flex: none;
+}
+
+.rc-toast--ok svg {
+	color: var(--rc-ok);
+}
+
+.rc-toast--err svg {
+	color: var(--rc-danger);
+}
+
+@keyframes rc-toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+
+/* ---- Loading skeleton ---- */
+.rc-skel {
+	border-radius: var(--rc-radius-sm);
+	background: linear-gradient(90deg, var(--rc-surface-2) 25%, var(--rc-surface-3) 50%, var(--rc-surface-2) 75%);
+	background-size: 200% 100%;
+	animation: rc-shimmer 1.3s linear infinite;
+}
+
+@keyframes rc-shimmer {
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* ---- Spinner ---- */
+.rc-spin {
+	animation: rc-rotate 0.8s linear infinite;
+}
+
+@keyframes rc-rotate {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ---- Motion & responsive ---- */
+@media (prefers-reduced-motion: reduce) {
+	#reallycache-app *,
+	#reallycache-app *::before,
+	#reallycache-app *::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+@media (max-width: 1100px) {
+	.rc-tiles {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (max-width: 782px) {
+	#reallycache-app {
+		margin: 12px 10px 30px;
+	}
+
+	.rc-topbar,
+	.rc-main,
+	.rc-footer {
+		padding-inline: 16px;
+	}
+
+	.rc-topbar {
+		flex-wrap: wrap;
+	}
+
+	.rc-promo {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.rc-row {
+		flex-wrap: wrap;
+	}
+}
+
+@media (max-width: 480px) {
+	.rc-tiles {
+		grid-template-columns: 1fr;
+	}
+}

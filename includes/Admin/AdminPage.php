@@ -1,14 +1,12 @@
 <?php
 namespace ReallyCache\Admin;
 
-use ReallyCache\Config;
 use ReallyCache\Engine;
-use ReallyCache\ServerDetector;
 
 /**
- * Minimal native admin screen: status, clear cache, core settings, dev mode.
- * Deliberately plain — it is the functional stand-in until the real UI is
- * built on top of a REST API in the next phase.
+ * The admin screen shell: menu entry, asset loading and the root element the
+ * JS app renders into. All data flows through the REST API; the only
+ * non-REST action left is the admin-bar Clear Cache link.
  */
 class AdminPage {
 
@@ -20,20 +18,45 @@ class AdminPage {
 		add_action( 'admin_menu', [ $this, 'register_menu' ] );
 		add_action( 'admin_bar_menu', [ $this, 'admin_bar' ], 90 );
 		add_action( 'admin_post_reallycache_clear', [ $this, 'handle_clear' ] );
-		add_action( 'admin_post_reallycache_save', [ $this, 'handle_save' ] );
-		add_action( 'admin_post_reallycache_dev_mode', [ $this, 'handle_dev_mode' ] );
 	}
 
 	public function register_menu() {
-		add_menu_page(
+		$hook = add_menu_page(
 			'ReallyCache',
 			'ReallyCache',
 			'manage_options',
 			'reallycache',
 			[ $this, 'render' ],
-			'dashicons-performance',
+			self::menu_icon(),
 			81
 		);
+
+		add_action( 'load-' . $hook, function () {
+			add_action( 'admin_enqueue_scripts', [ $this, 'enqueue' ] );
+		} );
+	}
+
+	public function enqueue() {
+		$base = plugin_dir_url( REALLYCACHE_FILE ) . 'assets/admin/';
+		$dir  = REALLYCACHE_DIR . '/assets/admin/';
+
+		wp_enqueue_style( 'reallycache-app', $base . 'app.css', [], (string) filemtime( $dir . 'app.css' ) );
+		wp_enqueue_script( 'reallycache-app', $base . 'app.js', [], (string) filemtime( $dir . 'app.js' ), true );
+
+		wp_localize_script( 'reallycache-app', 'ReallyCacheData', [
+			'restUrl' => esc_url_raw( rest_url( 'reallycache/v1/' ) ),
+			'nonce'   => wp_create_nonce( 'wp_rest' ),
+			'locale'  => str_replace( '_', '-', get_user_locale() ),
+			'brand'   => [
+				'hosting'  => apply_filters( 'reallycache_hosting_url', 'https://mvn.co.il/?utm_source=reallycache&utm_medium=plugin' ),
+				'whatsapp' => apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/972000000000' ),
+			],
+			'i18n'    => self::strings(),
+		] );
+	}
+
+	public function render() {
+		echo '<div id="reallycache-app"><noscript>' . esc_html__( 'ReallyCache needs JavaScript enabled.', 'reallycache' ) . '</noscript></div>';
 	}
 
 	public function admin_bar( $bar ) {
@@ -49,198 +72,92 @@ class AdminPage {
 	}
 
 	public function handle_clear() {
-		$this->authorize( 'reallycache_clear' );
-
-		$this->engine->purge_all();
-
-		$this->redirect_back( 'cleared' );
-	}
-
-	public function handle_save() {
-		$this->authorize( 'reallycache_save' );
-
-		Config::save( [
-			'cache_enabled'        => ! empty( $_POST['cache_enabled'] ),
-			'ttl'                  => max( 600, (int) ( $_POST['ttl'] ?? 43200 ) ),
-			'separate_mobile'      => ! empty( $_POST['separate_mobile'] ),
-			'purge_home_on_update' => ! empty( $_POST['purge_home_on_update'] ),
-			'excluded_uris'        => $this->lines( $_POST['excluded_uris'] ?? '' ),
-			'excluded_user_agents' => $this->lines( $_POST['excluded_user_agents'] ?? '' ),
-		] );
-
-		// Settings shape what is cacheable, so stale entries must go.
-		$this->engine->purge_all();
-
-		$this->redirect_back( 'saved' );
-	}
-
-	public function handle_dev_mode() {
-		$this->authorize( 'reallycache_dev_mode' );
-
-		$duration = sanitize_key( $_POST['duration'] ?? 'off' );
-		$until    = 0;
-		if ( '1h' === $duration ) {
-			$until = time() + HOUR_IN_SECONDS;
-		} elseif ( '24h' === $duration ) {
-			$until = time() + DAY_IN_SECONDS;
-		}
-
-		Config::save( [ 'dev_mode_until' => $until ] );
-
-		$this->redirect_back( $until ? 'dev_on' : 'dev_off' );
-	}
-
-	public function render() {
-		$config   = Config::load();
-		$stats    = $this->engine->driver()->stats();
-		$dev_on   = $config['dev_mode_until'] > time();
-		$notice   = sanitize_key( $_GET['rc_notice'] ?? '' );
-		$messages = [
-			'cleared' => __( 'Cache cleared.', 'reallycache' ),
-			'saved'   => __( 'Settings saved and cache cleared.', 'reallycache' ),
-			'dev_on'  => __( 'Development mode enabled — caching is paused.', 'reallycache' ),
-			'dev_off' => __( 'Development mode disabled.', 'reallycache' ),
-		];
-		?>
-		<div class="wrap">
-			<h1>ReallyCache</h1>
-
-			<?php if ( isset( $messages[ $notice ] ) ) : ?>
-				<div class="notice notice-success is-dismissible"><p><?php echo esc_html( $messages[ $notice ] ); ?></p></div>
-			<?php endif; ?>
-
-			<?php if ( $dev_on ) : ?>
-				<div class="notice notice-warning"><p>
-					<?php
-					printf(
-						/* translators: %s: time remaining */
-						esc_html__( 'Development mode is on — nothing is being cached. Expires in %s.', 'reallycache' ),
-						esc_html( human_time_diff( time(), $config['dev_mode_until'] ) )
-					);
-					?>
-				</p></div>
-			<?php endif; ?>
-
-			<h2><?php esc_html_e( 'Status', 'reallycache' ); ?></h2>
-			<table class="widefat striped" style="max-width:640px">
-				<tbody>
-					<tr>
-						<td><?php esc_html_e( 'Page cache', 'reallycache' ); ?></td>
-						<td><?php echo $config['cache_enabled'] && ! $dev_on ? '<strong style="color:#00a32a">' . esc_html__( 'Active', 'reallycache' ) . '</strong>' : '<strong style="color:#d63638">' . esc_html__( 'Inactive', 'reallycache' ) . '</strong>'; ?></td>
-					</tr>
-					<tr>
-						<td><?php esc_html_e( 'Web server', 'reallycache' ); ?></td>
-						<td><?php echo esc_html( ServerDetector::label() ); ?></td>
-					</tr>
-					<tr>
-						<td><?php esc_html_e( 'Cache engine', 'reallycache' ); ?></td>
-						<td><?php echo esc_html( ServerDetector::best_available_tier() ); ?></td>
-					</tr>
-					<tr>
-						<td><?php esc_html_e( 'Drop-in installed', 'reallycache' ); ?></td>
-						<td><?php echo file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ) ? esc_html__( 'Yes', 'reallycache' ) : '<strong style="color:#d63638">' . esc_html__( 'No — deactivate and reactivate the plugin', 'reallycache' ) . '</strong>'; ?></td>
-					</tr>
-					<tr>
-						<td><?php esc_html_e( 'Cached pages', 'reallycache' ); ?></td>
-						<td><?php echo esc_html( number_format_i18n( $stats['pages'] ) ); ?></td>
-					</tr>
-					<tr>
-						<td><?php esc_html_e( 'Cache size', 'reallycache' ); ?></td>
-						<td><?php echo esc_html( size_format( $stats['size'] ) ); ?></td>
-					</tr>
-				</tbody>
-			</table>
-
-			<p>
-				<a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_clear' ), 'reallycache_clear' ) ); ?>">
-					<?php esc_html_e( 'Clear Cache', 'reallycache' ); ?>
-				</a>
-			</p>
-
-			<h2><?php esc_html_e( 'Development Mode', 'reallycache' ); ?></h2>
-			<p class="description"><?php esc_html_e( 'Pause caching while working on the site. It turns itself back on.', 'reallycache' ); ?></p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline">
-				<?php wp_nonce_field( 'reallycache_dev_mode' ); ?>
-				<input type="hidden" name="action" value="reallycache_dev_mode">
-				<?php if ( $dev_on ) : ?>
-					<button class="button" name="duration" value="off"><?php esc_html_e( 'Disable now', 'reallycache' ); ?></button>
-				<?php else : ?>
-					<button class="button" name="duration" value="1h"><?php esc_html_e( 'Pause for 1 hour', 'reallycache' ); ?></button>
-					<button class="button" name="duration" value="24h"><?php esc_html_e( 'Pause for 24 hours', 'reallycache' ); ?></button>
-				<?php endif; ?>
-			</form>
-
-			<h2><?php esc_html_e( 'Settings', 'reallycache' ); ?></h2>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'reallycache_save' ); ?>
-				<input type="hidden" name="action" value="reallycache_save">
-				<table class="form-table">
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Page cache', 'reallycache' ); ?></th>
-						<td><label><input type="checkbox" name="cache_enabled" <?php checked( $config['cache_enabled'] ); ?>> <?php esc_html_e( 'Enable page caching', 'reallycache' ); ?></label></td>
-					</tr>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Cache lifetime', 'reallycache' ); ?></th>
-						<td>
-							<select name="ttl">
-								<?php
-								foreach ( [
-									3600   => __( '1 hour', 'reallycache' ),
-									21600  => __( '6 hours', 'reallycache' ),
-									43200  => __( '12 hours', 'reallycache' ),
-									86400  => __( '24 hours', 'reallycache' ),
-									604800 => __( '7 days', 'reallycache' ),
-								] as $seconds => $label ) :
-									?>
-									<option value="<?php echo esc_attr( $seconds ); ?>" <?php selected( (int) $config['ttl'], $seconds ); ?>><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Mobile cache', 'reallycache' ); ?></th>
-						<td>
-							<label><input type="checkbox" name="separate_mobile" <?php checked( $config['separate_mobile'] ); ?>> <?php esc_html_e( 'Keep a separate cache for mobile visitors', 'reallycache' ); ?></label>
-							<p class="description"><?php esc_html_e( 'Only needed when the site serves different HTML to mobile (not just responsive CSS).', 'reallycache' ); ?></p>
-						</td>
-					</tr>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Purge on update', 'reallycache' ); ?></th>
-						<td><label><input type="checkbox" name="purge_home_on_update" <?php checked( $config['purge_home_on_update'] ); ?>> <?php esc_html_e( 'Also purge the home page when content changes', 'reallycache' ); ?></label></td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="rc-excluded-uris"><?php esc_html_e( 'Never cache these URLs', 'reallycache' ); ?></label></th>
-						<td>
-							<textarea id="rc-excluded-uris" name="excluded_uris" rows="4" class="large-text code" placeholder="/members/*&#10;/landing-page/"><?php echo esc_textarea( implode( "\n", $config['excluded_uris'] ) ); ?></textarea>
-							<p class="description"><?php esc_html_e( 'One path per line, * matches anything. Cart, checkout and account pages are excluded automatically.', 'reallycache' ); ?></p>
-						</td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="rc-excluded-uas"><?php esc_html_e( 'Never cache for these user agents', 'reallycache' ); ?></label></th>
-						<td><textarea id="rc-excluded-uas" name="excluded_user_agents" rows="3" class="large-text code"><?php echo esc_textarea( implode( "\n", $config['excluded_user_agents'] ) ); ?></textarea></td>
-					</tr>
-				</table>
-				<?php submit_button( __( 'Save Settings', 'reallycache' ) ); ?>
-			</form>
-		</div>
-		<?php
-	}
-
-	private function authorize( $nonce_action ) {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Not allowed.', 'reallycache' ) );
 		}
-		check_admin_referer( $nonce_action );
-	}
+		check_admin_referer( 'reallycache_clear' );
 
-	private function lines( $raw ) {
-		$lines = preg_split( '/\r\n|\r|\n/', sanitize_textarea_field( wp_unslash( $raw ) ) );
+		$this->engine->purge_all();
 
-		return array_values( array_filter( array_map( 'trim', $lines ), 'strlen' ) );
-	}
-
-	private function redirect_back( $notice ) {
-		wp_safe_redirect( add_query_arg( 'rc_notice', $notice, admin_url( 'admin.php?page=reallycache' ) ) );
+		wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=reallycache' ) );
 		exit;
+	}
+
+	/** Every string the JS app shows. Keys are stable; values are translatable. */
+	private static function strings() {
+		return [
+			'status_active'   => __( 'Cache active', 'reallycache' ),
+			'status_paused'   => __( 'Dev mode', 'reallycache' ),
+			'status_disabled' => __( 'Cache off', 'reallycache' ),
+
+			'btn_clear'       => __( 'Clear Cache', 'reallycache' ),
+			'toast_cleared'   => __( 'Cache cleared', 'reallycache' ),
+			'toast_saved'     => __( 'Saved — cache cleared', 'reallycache' ),
+			'toast_error'     => __( 'Something went wrong. Try again', 'reallycache' ),
+			'err_load'        => __( 'Could not load ReallyCache data. Refresh the page to try again.', 'reallycache' ),
+
+			'tile_status'     => __( 'Page cache', 'reallycache' ),
+			'tile_server'     => __( 'Web server', 'reallycache' ),
+			'tile_pages'      => __( 'Cached pages', 'reallycache' ),
+			'tile_size'       => __( 'Cache size', 'reallycache' ),
+			'tile_ttl_sub'    => __( 'Lifetime: %s', 'reallycache' ),
+			'value_on'        => __( 'Active', 'reallycache' ),
+			'value_off'       => __( 'Off', 'reallycache' ),
+			'value_paused'    => __( 'Paused', 'reallycache' ),
+
+			'dropin_warn_title' => __( 'The cache drop-in is missing.', 'reallycache' ),
+			'dropin_warn_body'  => __( 'Deactivate and reactivate ReallyCache to reinstall it — until then pages are not served from cache.', 'reallycache' ),
+
+			'dev_title'       => __( 'Development mode', 'reallycache' ),
+			'dev_desc'        => __( 'Pause caching while working on the site. It turns itself back on.', 'reallycache' ),
+			'dev_active_desc' => __( 'Caching is paused — resumes in %s', 'reallycache' ),
+			'dev_1h'          => __( 'Pause for 1 hour', 'reallycache' ),
+			'dev_24h'         => __( 'Pause for 24 hours', 'reallycache' ),
+			'dev_off'         => __( 'Resume caching now', 'reallycache' ),
+			'toast_dev_on'    => __( 'Development mode is on', 'reallycache' ),
+			'toast_dev_off'   => __( 'Development mode is off — caching resumed', 'reallycache' ),
+			'time_h'          => __( '%s hours', 'reallycache' ),
+			'time_m'          => __( '%s minutes', 'reallycache' ),
+
+			'settings_title'  => __( 'Settings', 'reallycache' ),
+			'settings_desc'   => __( 'Saving clears the cache', 'reallycache' ),
+			'row_cache'       => __( 'Page caching', 'reallycache' ),
+			'row_cache_desc'  => __( 'Serve pages as static HTML instead of rebuilding them on every visit', 'reallycache' ),
+			'row_ttl'         => __( 'Cache lifetime', 'reallycache' ),
+			'row_ttl_desc'    => __( 'How long a cached page stays fresh before it is rebuilt', 'reallycache' ),
+			'row_mobile'      => __( 'Separate mobile cache', 'reallycache' ),
+			'row_mobile_desc' => __( 'Only needed when the site serves different HTML to mobile — not just responsive CSS', 'reallycache' ),
+			'row_home'        => __( 'Refresh home page on updates', 'reallycache' ),
+			'row_home_desc'   => __( 'Also purge the home page whenever a post or page changes', 'reallycache' ),
+			'row_uris'        => __( 'Never cache these URLs', 'reallycache' ),
+			'row_uris_desc'   => __( 'One path per line, * matches anything. Cart, checkout and account pages are protected automatically.', 'reallycache' ),
+			'row_uas'         => __( 'Never cache for these user agents', 'reallycache' ),
+			'row_uas_desc'    => __( 'One per line. Requests whose user agent contains the text bypass the cache.', 'reallycache' ),
+
+			'ttl_1h'          => __( '1 hour', 'reallycache' ),
+			'ttl_6h'          => __( '6 hours', 'reallycache' ),
+			'ttl_12h'         => __( '12 hours', 'reallycache' ),
+			'ttl_24h'         => __( '24 hours', 'reallycache' ),
+			'ttl_7d'          => __( '7 days', 'reallycache' ),
+
+			'save_pending'    => __( 'You have unsaved changes', 'reallycache' ),
+			'btn_save'        => __( 'Save changes', 'reallycache' ),
+			'btn_discard'     => __( 'Discard', 'reallycache' ),
+
+			'promo_title'     => __( 'Want the site even faster?', 'reallycache' ),
+			'promo_desc'      => __( 'The MVN speed team is happy to help — free advice on WhatsApp. And when you want the fastest home for your site, MVN fast hosting is built for it.', 'reallycache' ),
+			'promo_whatsapp'  => __( 'Chat on WhatsApp', 'reallycache' ),
+			'promo_hosting'   => __( 'MVN fast hosting', 'reallycache' ),
+			'promo_dismiss'   => __( 'Hide this', 'reallycache' ),
+
+			'footer_by'       => __( 'Crafted by MVN', 'reallycache' ),
+		];
+	}
+
+	/** Brand-pink bolt, encoded for the admin menu. */
+	private static function menu_icon() {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#a7aaad" d="M13 2 4.5 13.5h6L10.5 22 19 10.5h-6L13 2z"/></svg>';
+
+		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
 }

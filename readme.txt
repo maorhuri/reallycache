@@ -3,7 +3,7 @@ Contributors: mvn
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: cache, performance, speed, page cache
@@ -37,6 +37,10 @@ Yes, out of the box. Cart, checkout and account pages are never cached, visitors
 Use Development Mode on the ReallyCache screen — it pauses caching for an hour or a day and turns itself back on.
 
 == Changelog ==
+
+= 0.2.0 =
+* New admin interface: single-screen app with live status tiles, one-click cache clearing, development mode and instant feedback. No page reloads — everything runs over the REST API.
+* Full Hebrew translation and RTL support.
 
 = 0.1.0 =
 * Initial release: file-based page cache with smart targeted purging, WooCommerce safety, development mode, and automatic garbage collection.

@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.1.0
+	Version: 0.2.0
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.1.0' );
+define( 'REALLYCACHE_VERSION', '0.2.0' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -51,6 +51,7 @@ add_action( 'plugins_loaded', function () {
 
 	new ReallyCache\PurgeManager( $engine );
 	new ReallyCache\Compat\WooCommerce( $engine );
+	new ReallyCache\RestApi( $engine );
 
 	// Always constructed: the admin-bar Clear Cache node renders on the
 	// frontend too, and is_admin_bar_showing() is unreliable this early.
