@@ -23,6 +23,7 @@ class RestApi {
 			[ 'POST', '/warm', 'warm' ],
 			[ 'POST', '/warm-stop', 'warm_stop' ],
 			[ 'POST', '/webp-scan', 'webp_scan' ],
+			[ 'POST', '/redis-flush', 'redis_flush' ],
 			[ 'POST', '/dev-mode', 'dev_mode' ],
 		];
 
@@ -66,7 +67,7 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'browser_cache', 'redis_object_cache' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'browser_cache', 'redis_object_cache' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
@@ -75,7 +76,10 @@ class RestApi {
 			$ttl            = (int) $body['ttl'];
 			$changes['ttl'] = $ttl <= 0 ? 0 : max( 600, $ttl );
 		}
-		foreach ( [ 'excluded_uris', 'excluded_user_agents' ] as $list ) {
+		if ( array_key_exists( 'redis_max_ttl', $body ) ) {
+			$changes['redis_max_ttl'] = max( 0, (int) $body['redis_max_ttl'] );
+		}
+		foreach ( [ 'excluded_uris', 'excluded_user_agents', 'redis_excluded_groups' ] as $list ) {
 			if ( array_key_exists( $list, $body ) ) {
 				$lines             = is_array( $body[ $list ] ) ? $body[ $list ] : preg_split( '/\r\n|\r|\n/', (string) $body[ $list ] );
 				$changes[ $list ] = array_values( array_filter( array_map( function ( $line ) {
@@ -119,6 +123,17 @@ class RestApi {
 		return rest_ensure_response( $this->state() );
 	}
 
+	public function redis_flush() {
+		if ( ! Redis\Manager::active() ) {
+			return new \WP_Error( 'reallycache_no_redis', __( 'The Redis object cache is not active.', 'reallycache' ), [ 'status' => 400 ] );
+		}
+
+		wp_cache_flush();
+		delete_transient( 'reallycache_redis_insights' );
+
+		return rest_ensure_response( $this->state() );
+	}
+
 	public function dev_mode( \WP_REST_Request $request ) {
 		$duration = sanitize_key( (string) $request->get_param( 'duration' ) );
 
@@ -155,8 +170,12 @@ class RestApi {
 				'smart_cache'            => (bool) $config['smart_cache'],
 				'woocommerce_protection' => (bool) $config['woocommerce_protection'],
 				'webp_enabled'           => (bool) $config['webp_enabled'],
+				'webp_on_upload'         => (bool) $config['webp_on_upload'],
+				'lcp_boost'              => (bool) $config['lcp_boost'],
 				'browser_cache'          => (bool) $config['browser_cache'],
 				'redis_object_cache'     => (bool) $config['redis_object_cache'],
+				'redis_excluded_groups'  => array_values( (array) $config['redis_excluded_groups'] ),
+				'redis_max_ttl'          => (int) $config['redis_max_ttl'],
 				'excluded_uris'        => array_values( (array) $config['excluded_uris'] ),
 				'excluded_user_agents' => array_values( (array) $config['excluded_user_agents'] ),
 			],

@@ -78,10 +78,96 @@ class Manager {
 	}
 
 	public static function status() {
-		return [
+		self::maybe_refresh_dropin();
+
+		$status = [
 			'available' => self::available(),
 			'active'    => self::active(),
 			'foreign'   => self::foreign(),
 		];
+		if ( $status['active'] ) {
+			$status['insights'] = self::insights();
+		}
+
+		return $status;
+	}
+
+	/** Redeploy our drop-in when the plugin ships a newer version of it. */
+	private static function maybe_refresh_dropin() {
+		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 2' ) ) {
+			copy( REALLYCACHE_DIR . '/includes/Redis/object-cache-dropin.php', self::dropin_path() );
+		}
+	}
+
+	/**
+	 * What actually lives in Redis: our key count grouped by cache group,
+	 * accumulated hit/miss counters and the instance's memory usage.
+	 * Cached briefly — the admin app polls every couple of seconds.
+	 */
+	public static function insights() {
+		$cached = get_transient( 'reallycache_redis_insights' );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		try {
+			$p     = self::params();
+			$redis = new \Redis();
+			$ok    = $p['path'] ? $redis->connect( $p['path'] ) : $redis->connect( $p['host'], $p['port'], 0.5 );
+			if ( $ok && $p['password'] ) {
+				$ok = $redis->auth( $p['password'] );
+			}
+			if ( $ok && $p['database'] ) {
+				$redis->select( $p['database'] );
+			}
+			if ( ! $ok ) {
+				return null;
+			}
+
+			global $table_prefix;
+			$db     = defined( 'DB_NAME' ) ? DB_NAME : 'wp';
+			$prefix = 'rc:' . substr( md5( $db . '|' . (string) $table_prefix ), 0, 12 ) . ':';
+
+			$info   = (array) $redis->info( 'memory' );
+			$hits   = (int) $redis->get( $prefix . 'stats:hits' );
+			$misses = (int) $redis->get( $prefix . 'stats:misses' );
+
+			$keys   = 0;
+			$groups = [];
+			$cursor = null;
+			$rounds = 0;
+			do {
+				$batch = $redis->scan( $cursor, $prefix . '*', 1000 );
+				if ( is_array( $batch ) ) {
+					foreach ( $batch as $key ) {
+						$parts = explode( ':', $key, 5 );
+						if ( 'stats' === ( $parts[2] ?? '' ) ) {
+							continue;
+						}
+						$keys ++;
+						$group            = $parts[3] ?? '?';
+						$groups[ $group ] = ( $groups[ $group ] ?? 0 ) + 1;
+					}
+				}
+			} while ( $cursor > 0 && ++ $rounds < 50 );
+
+			arsort( $groups );
+
+			$insights = [
+				'hits'     => $hits,
+				'misses'   => $misses,
+				'hit_rate' => ( $hits + $misses ) > 0 ? (int) round( $hits * 100 / ( $hits + $misses ) ) : 0,
+				'keys'     => $keys,
+				'memory'   => (string) ( $info['used_memory_human'] ?? '' ),
+				'groups'   => array_slice( $groups, 0, 10, true ),
+			];
+			$redis->close();
+
+			set_transient( 'reallycache_redis_insights', $insights, 10 );
+
+			return $insights;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 }

@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.4.2
+	Version: 0.5.0
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.4.2' );
+define( 'REALLYCACHE_VERSION', '0.5.0' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -63,6 +63,7 @@ add_action( 'plugins_loaded', function () {
 	add_action( ReallyCache\Warmer::TICK_HOOK, [ 'ReallyCache\\Warmer', 'tick' ] );
 	add_action( ReallyCache\Media\Webp::TICK_HOOK, [ 'ReallyCache\\Media\\Webp', 'tick' ] );
 	ReallyCache\Media\Webp::register();
+	ReallyCache\Media\LcpBoost::register();
 
 	add_action( 'init', function () {
 		load_plugin_textdomain( 'reallycache', false, dirname( plugin_basename( REALLYCACHE_FILE ) ) . '/languages' );

@@ -3,7 +3,7 @@ Contributors: mvn
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.4.2
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: cache, performance, speed, page cache
@@ -37,6 +37,13 @@ Yes, out of the box. Cart, checkout and account pages are never cached, visitors
 Use Development Mode on the ReallyCache screen — it pauses caching for an hour or a day and turns itself back on.
 
 == Changelog ==
+
+= 0.5.0 =
+* Redis insights: live hit rate, queries served from RAM, key count, Redis memory usage and a breakdown of what lives inside by cache group — plus tuning: excluded groups and a default expiry cap, all applied through our drop-in (v2).
+* Admin-bar menu: a ReallyCache parent with Clear page cache, Warm cache, Flush Redis cache and Clear everything.
+* LCP Boost (on by default): the hero image loses lazy-loading, gains fetchpriority=high and a preload hint at cache time — attribute-only, safe with any builder.
+* "Convert on upload" toggle for WebP.
+* Server recommendations popup on Nginx: copy-paste blocks for browser-cache headers and compression.
 
 = 0.4.0 =
 * Fixed: cache warm-up no longer stalls. The queue now runs on a real background worker (loopback + inline pump from status polling + cron watchdog) instead of relying on WP-Cron timing.

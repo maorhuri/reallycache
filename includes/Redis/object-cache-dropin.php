@@ -1,11 +1,15 @@
 <?php
 /**
- * ReallyCache Redis object cache drop-in.
+ * ReallyCache Redis object cache drop-in. Drop-in version: 2
  *
  * Fail-open by design: if Redis is unreachable at any point, the cache
  * degrades to a per-request in-memory cache and the site keeps working.
  * Keys are namespaced per site (DB name + table prefix), so flushing one
  * site never touches another site sharing the same Redis instance.
+ *
+ * Reads wp-content/reallycache/config.php for tuning: excluded groups
+ * (redis_excluded_groups) and a default expiry cap (redis_max_ttl).
+ * Persists hit/miss counters to Redis on shutdown for the stats screen.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -120,11 +124,25 @@ class WP_Object_Cache {
 	private $blog_id = 1;
 	private $multisite = false;
 	private $prefix = '';
+	private $max_ttl = 0;
 
 	public $cache_hits = 0;
 	public $cache_misses = 0;
+	private $redis_hits = 0;
+	private $redis_misses = 0;
 
 	public function __construct() {
+		// Site-owner tuning from the ReallyCache config file.
+		$config_file = WP_CONTENT_DIR . '/reallycache/config.php';
+		if ( is_readable( $config_file ) ) {
+			$reallycache_config_file = $config_file; // Satisfies the config file's access guard.
+			$config                  = include $config_file;
+			if ( is_array( $config ) ) {
+				$this->non_persistent = array_values( array_filter( (array) ( $config['redis_excluded_groups'] ?? [] ) ) );
+				$this->max_ttl        = max( 0, (int) ( $config['redis_max_ttl'] ?? 0 ) );
+			}
+		}
+
 		$this->multisite = function_exists( 'is_multisite' ) && is_multisite();
 		$this->blog_id   = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 1;
 
@@ -148,6 +166,27 @@ class WP_Object_Cache {
 				$ok = $redis->select( $database );
 			}
 			$this->redis = $ok ? $redis : null;
+		} catch ( Throwable $e ) {
+			$this->redis = null;
+		}
+
+		register_shutdown_function( [ $this, 'persist_stats' ] );
+	}
+
+	/** Accumulate hit/miss counters in Redis so the stats screen sees totals. */
+	public function persist_stats() {
+		if ( ! $this->redis || ( ! $this->redis_hits && ! $this->redis_misses ) ) {
+			return;
+		}
+		try {
+			if ( $this->redis_hits ) {
+				$this->redis->incrBy( $this->prefix . 'stats:hits', $this->redis_hits );
+			}
+			if ( $this->redis_misses ) {
+				$this->redis->incrBy( $this->prefix . 'stats:misses', $this->redis_misses );
+			}
+			$this->redis_hits   = 0;
+			$this->redis_misses = 0;
 		} catch ( Throwable $e ) {
 			$this->redis = null;
 		}
@@ -182,9 +221,11 @@ class WP_Object_Cache {
 					$this->cache[ $group ][ $key ] = $value;
 					$found = true;
 					$this->cache_hits ++;
+					$this->redis_hits ++;
 
 					return is_object( $value ) ? clone $value : $value;
 				}
+				$this->redis_misses ++;
 			} catch ( Throwable $e ) {
 				$this->redis = null;
 			}
@@ -214,6 +255,9 @@ class WP_Object_Cache {
 			try {
 				$rkey = $this->redis_key( $key, $group );
 				$raw  = serialize( $data ); // phpcs:ignore
+				if ( $expire < 1 && $this->max_ttl > 0 ) {
+					$expire = $this->max_ttl;
+				}
 				$expire > 0 ? $this->redis->setex( $rkey, $expire, $raw ) : $this->redis->set( $rkey, $raw );
 			} catch ( Throwable $e ) {
 				$this->redis = null;

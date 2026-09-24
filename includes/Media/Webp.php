@@ -27,7 +27,7 @@ class Webp {
 		// New uploads: queue instead of converting inline, so uploads stay fast.
 		add_filter( 'wp_generate_attachment_metadata', function ( $metadata, $attachment_id ) {
 			$config = Config::load();
-			if ( ! empty( $config['webp_enabled'] ) && self::is_supported() ) {
+			if ( ! empty( $config['webp_enabled'] ) && ! empty( $config['webp_on_upload'] ) && self::is_supported() ) {
 				self::enqueue( [ (int) $attachment_id ] );
 			}
 

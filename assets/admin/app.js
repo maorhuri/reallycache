@@ -162,9 +162,18 @@
 	function tilesHtml() {
 		var cacheValue = state.dev_mode.active ? t( 'value_paused' ) : ( state.settings.cache_enabled ? t( 'value_on' ) : t( 'value_off' ) );
 
+		var serverTile = '<div class="rc-tile">' +
+			'<div class="rc-tile-label">' + icon( 'server' ) + esc( t( 'tile_server' ) ) + '</div>' +
+			'<div class="rc-tile-value">' + esc( state.server.name ) + '</div>' +
+			'<div class="rc-tile-sub">' + esc( state.server.tier ) + '</div>' +
+			( 'nginx' === RC.server
+				? '<button type="button" class="rc-tile-link" data-action="recs-open">' + esc( t( 'btn_server_recs' ) ) + '</button>'
+				: '' ) +
+		'</div>';
+
 		return '<div class="rc-tiles">' +
 			tile( 'activity', t( 'tile_status' ), esc( cacheValue ), tf( 'tile_ttl_sub', ttlLabel( state.settings.ttl ) ) ) +
-			tile( 'server', t( 'tile_server' ), esc( state.server.name ), state.server.tier ) +
+			serverTile +
 			tile( 'pages', t( 'tile_pages' ), '<span data-el="tile-pages">' + esc( formatNumber( state.stats.pages ) ) + '</span>' ) +
 			tile( 'db', t( 'tile_size' ), '<span data-el="tile-size">' + formatBytes( state.stats.size ) + '</span>' ) +
 		'</div>';
@@ -232,6 +241,8 @@
 			var allDone = w.library_total > 0 && w.library_converted >= w.library_total;
 
 			body = switchRow( 'webp_enabled', t( 'row_webp' ), t( 'row_webp_desc' ) ) +
+				switchRow( 'webp_on_upload', t( 'row_webp_upload' ), t( 'row_webp_upload_desc' ) ) +
+				switchRow( 'lcp_boost', t( 'row_lcp' ), t( 'row_lcp_desc' ) ) +
 				'<div class="rc-media-stats">' +
 					webpDonut( w ) +
 					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong><span data-el="webp-libdone">' + esc( formatNumber( w.library_converted ) ) + '</span> / ' + esc( formatNumber( w.library_total ) ) + '</strong></div>' +
@@ -270,6 +281,84 @@
 				'<span class="rc-card-desc">' + esc( t( 'media_desc' ) ) + '</span>' +
 			'</div>' +
 			'<div class="rc-card-body">' + body + '</div>' +
+		'</div>';
+	}
+
+	function redisHtml() {
+		var r = state.redis;
+		if ( ! r || ! r.active ) {
+			return '';
+		}
+
+		var ins  = r.insights;
+		var body = '';
+
+		if ( ins ) {
+			body += '<div class="rc-media-stats">' +
+				'<div class="rc-media-stat">' + esc( t( 'redis_hit_rate' ) ) + '<strong data-el="redis-rate">' + ins.hit_rate + '%</strong></div>' +
+				'<div class="rc-media-stat">' + esc( t( 'redis_hits_label' ) ) + '<strong data-el="redis-hits">' + esc( formatNumber( ins.hits ) ) + '</strong></div>' +
+				'<div class="rc-media-stat">' + esc( t( 'redis_keys_label' ) ) + '<strong data-el="redis-keys">' + esc( formatNumber( ins.keys ) ) + '</strong></div>' +
+				'<div class="rc-media-stat">' + esc( t( 'redis_memory_label' ) ) + '<strong data-el="redis-mem">' + esc( ins.memory || '—' ) + '</strong></div>' +
+			'</div>';
+
+			var chips = Object.keys( ins.groups || {} ).map( function ( group ) {
+				return '<span class="rc-chip">' + esc( group ) + ' · ' + esc( formatNumber( ins.groups[ group ] ) ) + '</span>';
+			} ).join( '' );
+			if ( chips ) {
+				body += '<div class="rc-row-desc" style="padding-block-start:4px">' + esc( t( 'redis_groups_title' ) ) + '</div>' +
+					'<div class="rc-chips">' + chips + '</div>';
+			}
+		}
+
+		var ttlOptions = [ 0, 3600, 21600, 86400 ].map( function ( s ) {
+			var label = 0 === s ? t( 'ttl_unlimited' ) : ttlLabel( s );
+			return '<option value="' + s + '"' + ( model.redis_max_ttl === s ? ' selected' : '' ) + '>' + esc( label ) + '</option>';
+		} ).join( '' );
+
+		body += '<div class="rc-row">' +
+				'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_ttl' ) ) + '</div>' +
+					'<div class="rc-row-desc">' + esc( t( 'row_redis_ttl_desc' ) ) + '</div></div>' +
+				'<select class="rc-select" data-field="redis_max_ttl">' + ttlOptions + '</select>' +
+			'</div>' +
+			'<div class="rc-row rc-row--col">' +
+				'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_groups' ) ) + '</div>' +
+					'<div class="rc-row-desc">' + esc( t( 'row_redis_groups_desc' ) ) + '</div></div>' +
+				'<textarea class="rc-textarea" data-field="redis_excluded_groups" spellcheck="false" rows="3">' + esc( model.redis_excluded_groups.join( '\n' ) ) + '</textarea>' +
+			'</div>' +
+			'<div class="rc-row" style="border:0">' +
+				'<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="redis-flush">' + icon( 'trash' ) + '<span>' + esc( t( 'btn_redis_flush' ) ) + '</span></button>' +
+			'</div>';
+
+		return '<div class="rc-card">' +
+			'<div class="rc-card-head">' + icon( 'db' ) +
+				'<span class="rc-card-title">Redis</span>' +
+				'<span class="rc-card-desc">' + esc( t( 'redis_desc' ) ) + '</span>' +
+			'</div>' +
+			'<div class="rc-card-body">' + body + '</div>' +
+		'</div>';
+	}
+
+	function snippetBlock( title, snippetKey ) {
+		var code = ( RC.snippets && RC.snippets[ snippetKey ] ) || '';
+
+		return '<div class="rc-snippet">' +
+			'<div class="rc-snippet-head"><span>' + esc( title ) + '</span>' +
+				'<button type="button" class="rc-btn rc-btn--subtle rc-btn--sm" data-action="copy" data-copy="' + esc( snippetKey ) + '">' + esc( t( 'btn_copy' ) ) + '</button></div>' +
+			'<pre dir="ltr">' + esc( code ) + '</pre>' +
+		'</div>';
+	}
+
+	function recsModalHtml() {
+		return '<div class="rc-modal-overlay" data-el="recs" hidden>' +
+			'<div class="rc-modal" role="dialog" aria-modal="true">' +
+				'<div class="rc-modal-head">' +
+					'<span class="rc-card-title">' + esc( t( 'recs_title' ) ) + '</span>' +
+					'<button type="button" class="rc-promo-close" data-action="recs-close" aria-label="' + esc( t( 'promo_dismiss' ) ) + '">' + icon( 'x' ) + '</button>' +
+				'</div>' +
+				'<p class="rc-row-desc">' + esc( t( 'recs_intro' ) ) + '</p>' +
+				snippetBlock( t( 'recs_bcache' ), 'browser_cache' ) +
+				snippetBlock( t( 'recs_gzip' ), 'gzip' ) +
+			'</div>' +
 		'</div>';
 	}
 
@@ -394,6 +483,7 @@
 					devHtml() +
 					settingsHtml() +
 					mediaHtml() +
+					redisHtml() +
 					promoHtml() +
 					'<div class="rc-savebar" data-el="savebar">' +
 						'<span class="rc-savebar-text">' + esc( t( 'save_pending' ) ) + '</span>' +
@@ -408,6 +498,7 @@
 						: '<span>' + esc( t( 'footer_by' ) ) + '</span>' ) +
 				'</div>' +
 			'</div>' +
+			recsModalHtml() +
 			'<div class="rc-toasts" data-el="toasts" aria-live="polite"></div>';
 
 		updateSavebar();
@@ -651,6 +742,12 @@
 	/* --------------------------------------------------------------- events */
 
 	root.addEventListener( 'click', function ( event ) {
+		var overlayHit = event.target.classList && event.target.classList.contains( 'rc-modal-overlay' );
+		if ( overlayHit ) {
+			event.target.hidden = true;
+			return;
+		}
+
 		var target = event.target.closest( '[data-action]' );
 		if ( ! target ) {
 			return;
@@ -666,6 +763,39 @@
 			case 'webp-scan':
 				doWebpScan( target );
 				break;
+			case 'redis-flush':
+				busyButton( target, true );
+				api( 'redis-flush', {} ).then( function ( payload ) {
+					applyState( payload );
+					toast( t( 'toast_redis_flushed' ), true );
+				} ).catch( function () {
+					busyButton( target, false );
+					toast( t( 'toast_error' ), false );
+				} );
+				break;
+			case 'recs-open': {
+				var recs = el( 'recs' );
+				if ( recs ) {
+					recs.hidden = false;
+				}
+				break;
+			}
+			case 'recs-close': {
+				var overlay = el( 'recs' );
+				if ( overlay ) {
+					overlay.hidden = true;
+				}
+				break;
+			}
+			case 'copy': {
+				var text = ( RC.snippets && RC.snippets[ target.dataset.copy ] ) || '';
+				if ( text && navigator.clipboard ) {
+					navigator.clipboard.writeText( text ).then( function () {
+						toast( t( 'toast_copied' ), true );
+					} );
+				}
+				break;
+			}
 			case 'warm-stop':
 				target.disabled = true;
 				api( 'warm-stop', {} ).then( function ( payload ) {
@@ -706,8 +836,8 @@
 
 		if ( 'checkbox' === event.target.type ) {
 			model[ field ] = event.target.checked;
-		} else if ( 'ttl' === field ) {
-			model.ttl = parseInt( event.target.value, 10 );
+		} else if ( 'SELECT' === event.target.tagName ) {
+			model[ field ] = parseInt( event.target.value, 10 );
 		} else {
 			model[ field ] = event.target.value.split( '\n' ).map( function ( line ) {
 				return line.trim();

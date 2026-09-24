@@ -2,6 +2,9 @@
 namespace ReallyCache\Admin;
 
 use ReallyCache\Engine;
+use ReallyCache\Redis;
+use ReallyCache\ServerDetector;
+use ReallyCache\Warmer;
 
 /**
  * The admin screen shell: menu entry, asset loading and the root element the
@@ -18,6 +21,9 @@ class AdminPage {
 		add_action( 'admin_menu', [ $this, 'register_menu' ] );
 		add_action( 'admin_bar_menu', [ $this, 'admin_bar' ], 90 );
 		add_action( 'admin_post_reallycache_clear', [ $this, 'handle_clear' ] );
+		add_action( 'admin_post_reallycache_warm', [ $this, 'handle_warm' ] );
+		add_action( 'admin_post_reallycache_redis_flush', [ $this, 'handle_redis_flush' ] );
+		add_action( 'admin_post_reallycache_clear_all', [ $this, 'handle_clear_all' ] );
 	}
 
 	public function register_menu() {
@@ -51,6 +57,11 @@ class AdminPage {
 				'hosting'  => apply_filters( 'reallycache_hosting_url', 'https://mvn.co.il/?utm_source=reallycache&utm_medium=plugin' ),
 				'whatsapp' => apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/97237722100' ),
 			],
+			'server'  => ServerDetector::server(),
+			'snippets' => [
+				'browser_cache' => (string) file_get_contents( REALLYCACHE_DIR . '/docs/nginx-browser-cache.conf' ),
+				'gzip'          => "# ReallyCache — compression (inside http { } or server { })\ngzip on;\ngzip_comp_level 5;\ngzip_min_length 256;\ngzip_types text/css application/javascript application/json image/svg+xml application/xml text/plain font/ttf;\ngzip_vary on;",
+			],
 			'i18n'    => self::strings(),
 		] );
 	}
@@ -65,20 +76,77 @@ class AdminPage {
 		}
 
 		$bar->add_node( [
-			'id'    => 'reallycache-clear',
-			'title' => __( 'Clear Cache', 'reallycache' ),
-			'href'  => wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_clear' ), 'reallycache_clear' ),
+			'id'    => 'reallycache',
+			'title' => 'ReallyCache',
+			'href'  => admin_url( 'admin.php?page=reallycache' ),
+		] );
+		$bar->add_node( [
+			'id'     => 'reallycache-clear',
+			'parent' => 'reallycache',
+			'title'  => __( 'Clear page cache', 'reallycache' ),
+			'href'   => wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_clear' ), 'reallycache_clear' ),
+		] );
+		$bar->add_node( [
+			'id'     => 'reallycache-warm',
+			'parent' => 'reallycache',
+			'title'  => __( 'Warm cache', 'reallycache' ),
+			'href'   => wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_warm' ), 'reallycache_warm' ),
+		] );
+		if ( Redis\Manager::active() ) {
+			$bar->add_node( [
+				'id'     => 'reallycache-redis',
+				'parent' => 'reallycache',
+				'title'  => __( 'Flush Redis cache', 'reallycache' ),
+				'href'   => wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_redis_flush' ), 'reallycache_redis_flush' ),
+			] );
+		}
+		$bar->add_node( [
+			'id'     => 'reallycache-all',
+			'parent' => 'reallycache',
+			'title'  => __( 'Clear everything', 'reallycache' ),
+			'href'   => wp_nonce_url( admin_url( 'admin-post.php?action=reallycache_clear_all' ), 'reallycache_clear_all' ),
 		] );
 	}
 
 	public function handle_clear() {
+		$this->authorize_action( 'reallycache_clear' );
+		$this->engine->purge_all();
+		$this->back();
+	}
+
+	public function handle_warm() {
+		$this->authorize_action( 'reallycache_warm' );
+		Warmer::seed_site();
+		$this->back();
+	}
+
+	public function handle_redis_flush() {
+		$this->authorize_action( 'reallycache_redis_flush' );
+		if ( Redis\Manager::active() ) {
+			wp_cache_flush();
+			delete_transient( 'reallycache_redis_insights' );
+		}
+		$this->back();
+	}
+
+	public function handle_clear_all() {
+		$this->authorize_action( 'reallycache_clear_all' );
+		$this->engine->purge_all();
+		if ( Redis\Manager::active() ) {
+			wp_cache_flush();
+			delete_transient( 'reallycache_redis_insights' );
+		}
+		$this->back();
+	}
+
+	private function authorize_action( $nonce_action ) {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Not allowed.', 'reallycache' ) );
 		}
-		check_admin_referer( 'reallycache_clear' );
+		check_admin_referer( $nonce_action );
+	}
 
-		$this->engine->purge_all();
-
+	private function back() {
 		wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=reallycache' ) );
 		exit;
 	}
@@ -169,6 +237,32 @@ class AdminPage {
 			'row_redis'        => __( 'Redis object cache', 'reallycache' ),
 			'row_redis_desc'   => __( 'Redis detected on this server — cache database queries in memory, no extra plugin needed', 'reallycache' ),
 			'redis_foreign'    => __( 'Another plugin already manages the object cache on this site', 'reallycache' ),
+			'redis_desc'       => __( 'Live view of what WordPress keeps in memory', 'reallycache' ),
+			'redis_hit_rate'   => __( 'Hit rate', 'reallycache' ),
+			'redis_hits_label' => __( 'Queries from RAM', 'reallycache' ),
+			'redis_keys_label' => __( 'Keys stored', 'reallycache' ),
+			'redis_memory_label' => __( 'Redis memory', 'reallycache' ),
+			'redis_groups_title' => __( 'What lives in Redis right now:', 'reallycache' ),
+			'row_redis_ttl'    => __( 'Default expiry', 'reallycache' ),
+			'row_redis_ttl_desc' => __( 'Entries without an expiry of their own are capped at this age', 'reallycache' ),
+			'row_redis_groups' => __( 'Excluded groups', 'reallycache' ),
+			'row_redis_groups_desc' => __( 'One cache group per line that should stay out of Redis', 'reallycache' ),
+			'ttl_unlimited'    => __( 'Unlimited', 'reallycache' ),
+			'btn_redis_flush'  => __( 'Flush Redis cache', 'reallycache' ),
+			'toast_redis_flushed' => __( 'Redis cache flushed', 'reallycache' ),
+
+			'row_webp_upload'      => __( 'Convert on upload', 'reallycache' ),
+			'row_webp_upload_desc' => __( 'Every image you upload is converted to WebP automatically in the background', 'reallycache' ),
+			'row_lcp'          => __( 'LCP Boost', 'reallycache' ),
+			'row_lcp_desc'     => __( 'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win', 'reallycache' ),
+
+			'btn_server_recs'  => __( 'Server recommendations →', 'reallycache' ),
+			'recs_title'       => __( 'Nginx recommendations', 'reallycache' ),
+			'recs_intro'       => __( 'Paste these blocks into the site\'s Nginx configuration and reload Nginx. They fix the PageSpeed "efficient cache lifetimes" audit and compression.', 'reallycache' ),
+			'recs_bcache'      => __( 'Browser cache headers for static files', 'reallycache' ),
+			'recs_gzip'        => __( 'Compression', 'reallycache' ),
+			'btn_copy'         => __( 'Copy', 'reallycache' ),
+			'toast_copied'     => __( 'Copied to clipboard', 'reallycache' ),
 
 			'save_pending'    => __( 'You have unsaved changes', 'reallycache' ),
 			'btn_save'        => __( 'Save changes', 'reallycache' ),
