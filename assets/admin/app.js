@@ -321,8 +321,7 @@
 		var text  = null === v || undefined === v ? t( 'woo_cart_probing' ) : ( v ? t( 'woo_cart_ok' ) : t( 'woo_cart_safe' ) );
 		var style = 'padding-block-end:10px' + ( true === v ? ';color:var(--rc-ok)' : '' );
 
-		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) +
-			' <button type="button" class="rc-progress-stop" data-action="cart-probe">' + esc( t( 'btn_cart_probe' ) ) + '</button></div>';
+		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
 	}
 
 	function tabsHtml() {
@@ -600,6 +599,34 @@
 		updateSavebar();
 		scheduleDevTick();
 		schedulePoll();
+		scheduleProbeRefresh();
+	}
+
+	// The cart probe runs itself in the background on first load; while
+	// its verdict is pending, refresh a few times so it appears without
+	// any user action.
+	var probeTimer = null;
+	var probeTries = 0;
+
+	function scheduleProbeRefresh() {
+		if ( probeTimer ) {
+			clearTimeout( probeTimer );
+			probeTimer = null;
+		}
+		if ( ! state.woo_active || null != state.woo_cart_cache || probeTries >= 5 ) {
+			return;
+		}
+		probeTries ++;
+		probeTimer = setTimeout( function () {
+			api( 'state' ).then( function ( payload ) {
+				if ( ! isDirty() && ! saving ) {
+					applyState( payload );
+				} else {
+					state.woo_cart_cache = payload.woo_cart_cache;
+					scheduleProbeRefresh();
+				}
+			} ).catch( scheduleProbeRefresh );
+		}, 7000 );
 	}
 
 	function warmLabel() {
@@ -865,16 +892,6 @@
 					window.localStorage.setItem( 'reallycache-tab', activeTab );
 				} catch ( e ) {}
 				render();
-				break;
-			case 'cart-probe':
-				target.disabled = true;
-				target.textContent = '…';
-				api( 'cart-probe', {} ).then( function ( payload ) {
-					applyState( payload );
-				} ).catch( function () {
-					target.disabled = false;
-					toast( t( 'toast_error' ), false );
-				} );
 				break;
 			case 'redis-flush':
 				busyButton( target, true );
