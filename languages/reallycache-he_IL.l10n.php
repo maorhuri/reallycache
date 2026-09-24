@@ -33,6 +33,10 @@ return [
 
 		'The cache drop-in is missing.' => 'קובץ ה-drop-in של הקאש חסר.',
 		'Deactivate and reactivate ReallyCache to reinstall it — until then pages are not served from cache.' => 'כבו והפעילו מחדש את ReallyCache כדי להתקין אותו מחדש — עד אז עמודים לא מוגשים מהקאש.',
+		'Another caching plugin controls this site.' => 'תוסף קאש אחר שולט באתר הזה.',
+		'advanced-cache.php belongs to a different plugin. Remove or deactivate the other cache plugin, then deactivate and reactivate ReallyCache.' => 'הקובץ advanced-cache.php שייך לתוסף אחר. הסירו או כבו את תוסף הקאש האחר, ואז כבו והפעילו מחדש את ReallyCache.',
+		'The cache folder is not writable!' => 'תיקיית הקאש לא ניתנת לכתיבה!',
+		'Nothing can be saved to %s — usually leftover permissions from a previous cache plugin. Fix the folder\'s owner/permissions (or delete wp-content/cache and reload).' => 'אי אפשר לשמור כלום ב-%s — בדרך כלל הרשאות שנשארו מתוסף קאש קודם. תקנו את הבעלים/הרשאות של התיקייה (או מחקו את wp-content/cache ורעננו).',
 
 		'Development mode' => 'מצב פיתוח',
 		'Pause caching while working on the site. It turns itself back on.' => 'השהיית הקאש בזמן עבודה על האתר. הוא חוזר לפעול לבד.',

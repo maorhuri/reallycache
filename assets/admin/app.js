@@ -188,12 +188,25 @@
 	}
 
 	function bannerHtml() {
-		if ( state.dropin ) {
-			return '';
+		var banners = '';
+
+		if ( ! state.dropin ) {
+			banners += '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
+				'<div class="rc-banner-text"><strong>' + esc( t( 'dropin_warn_title' ) ) + '</strong><br>' + esc( t( 'dropin_warn_body' ) ) + '</div>' +
+			'</div>';
+		} else if ( false === state.dropin_ours ) {
+			banners += '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
+				'<div class="rc-banner-text"><strong>' + esc( t( 'dropin_foreign_title' ) ) + '</strong><br>' + esc( t( 'dropin_foreign_body' ) ) + '</div>' +
+			'</div>';
 		}
-		return '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
-			'<div class="rc-banner-text"><strong>' + esc( t( 'dropin_warn_title' ) ) + '</strong><br>' + esc( t( 'dropin_warn_body' ) ) + '</div>' +
-		'</div>';
+
+		if ( state.health && ! state.health.cache_writable ) {
+			banners += '<div class="rc-banner rc-banner--danger">' + icon( 'warn' ) +
+				'<div class="rc-banner-text"><strong>' + esc( t( 'health_write_title' ) ) + '</strong><br>' + esc( tf( 'health_write_body', state.health.cache_root ) ) + '</div>' +
+			'</div>';
+		}
+
+		return banners;
 	}
 
 	function pathOf( url ) {

@@ -182,6 +182,10 @@ class AdminPage {
 
 			'dropin_warn_title' => __( 'The cache drop-in is missing.', 'reallycache' ),
 			'dropin_warn_body'  => __( 'Deactivate and reactivate ReallyCache to reinstall it — until then pages are not served from cache.', 'reallycache' ),
+			'dropin_foreign_title' => __( 'Another caching plugin controls this site.', 'reallycache' ),
+			'dropin_foreign_body'  => __( 'advanced-cache.php belongs to a different plugin. Remove or deactivate the other cache plugin, then deactivate and reactivate ReallyCache.', 'reallycache' ),
+			'health_write_title'   => __( 'The cache folder is not writable!', 'reallycache' ),
+			'health_write_body'    => __( 'Nothing can be saved to %s — usually leftover permissions from a previous cache plugin. Fix the folder\'s owner/permissions (or delete wp-content/cache and reload).', 'reallycache' ),
 
 			'dev_title'       => __( 'Development mode', 'reallycache' ),
 			'dev_desc'        => __( 'Pause caching while working on the site. It turns itself back on.', 'reallycache' ),

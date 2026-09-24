@@ -68,12 +68,21 @@ class Engine {
 
 	/** Called from wp_cache_postload() on every request that wasn't a hit. */
 	public function start_buffer() {
-		if ( $this->buffering || empty( $this->config['cache_enabled'] ) || ! $this->gate->request_ok() ) {
+		if ( $this->buffering || empty( $this->config['cache_enabled'] ) ) {
+			return;
+		}
+
+		if ( ! $this->gate->request_ok() ) {
+			// Request-level bypass (cookies, method, exclusions…).
+			@header( 'X-ReallyCache: SKIP' );
 			return;
 		}
 
 		$key = CacheKey::from_request( $this->config );
 		if ( null === $key ) {
+			// No cache key possible: host not allowed / odd port /
+			// meaningful query string / unsafe path.
+			@header( 'X-ReallyCache: NO-KEY' );
 			return;
 		}
 
@@ -100,6 +109,9 @@ class Engine {
 	private function maybe_store( CacheKey $key, $buffer ) {
 		if ( strlen( $buffer ) < 255 || ! $this->gate->response_ok( $buffer ) ) {
 			$this->driver->mark_uncacheable();
+			// The reason is gold when debugging "why is nothing cached":
+			// curl -I and the header says exactly which check refused.
+			header( 'X-ReallyCache: BYPASS-' . ( $this->gate->reject_reason ?: 'too-small' ) );
 			return $buffer;
 		}
 
@@ -112,7 +124,14 @@ class Engine {
 		$html .= "\n<!-- Cached by ReallyCache on " . gmdate( 'Y-m-d H:i:s' ) . " UTC -->";
 
 		$this->driver->store( $key, $html, (int) $this->config['ttl'], $this->security_headers() );
-		header( 'X-ReallyCache: MISS' );
+
+		// Verify the write actually landed — a silent mkdir/permission
+		// failure otherwise looks like caching works while nothing is saved.
+		if ( $this->driver->has( $key, 0 ) ) {
+			header( 'X-ReallyCache: MISS' );
+		} else {
+			header( 'X-ReallyCache: STORE-FAILED' );
+		}
 
 		return $html;
 	}

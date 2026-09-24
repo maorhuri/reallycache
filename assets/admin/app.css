@@ -518,6 +518,16 @@
 	color: var(--rc-warn);
 }
 
+.rc-banner--danger {
+	background: var(--rc-danger-tint);
+	border-color: rgba(255, 90, 101, 0.35);
+	color: var(--rc-danger);
+}
+
+.rc-banner--danger strong {
+	color: var(--rc-danger);
+}
+
 .rc-banner-text {
 	color: var(--rc-text-2);
 }

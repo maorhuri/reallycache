@@ -88,12 +88,15 @@ class CacheKey {
 	/**
 	 * Only a strictly valid hostname is accepted — HTTP_HOST is client input
 	 * and becomes a directory name, so anything unusual is rejected outright.
-	 * A non-default port makes the request uncacheable rather than being
-	 * stripped: stripping would store a page rendered for host:port under
-	 * the canonical host's key (cache poisoning).
+	 * The default ports (:80/:443) are stripped — behind reverse proxies
+	 * HTTP_HOST often carries them and the rendered page is identical.
+	 * Any other port makes the request uncacheable rather than stripped:
+	 * stripping would store a page rendered for host:port under the
+	 * canonical host's key (cache poisoning).
 	 */
-	private static function sanitize_host( $host ) {
-		$host = strtolower( trim( $host ) );
+	public static function sanitize_host( $host ) {
+		$host = strtolower( trim( (string) $host ) );
+		$host = preg_replace( '/:(?:80|443)$/', '', $host );
 
 		if ( '' === $host || strlen( $host ) > 253 || ! preg_match( '/^[a-z0-9]([a-z0-9\-.]*[a-z0-9])?$/', $host ) || false !== strpos( $host, '..' ) ) {
 			return '';

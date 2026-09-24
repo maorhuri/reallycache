@@ -14,6 +14,9 @@ namespace ReallyCache;
  */
 class Gate {
 
+	/** @var string Why the last response_ok() said no — for the debug header. */
+	public $reject_reason = '';
+
 	private $config;
 
 	public function __construct( array $config ) {
@@ -71,67 +74,79 @@ class Gate {
 	public function response_ok( $buffer ) {
 		global $wp_query;
 
+		$this->reject_reason = '';
+
 		// DONOTCACHEPAGE is the ecosystem-wide opt-out convention honored by
 		// every serious cache plugin; third-party code relies on it.
 		if ( defined( 'DONOTCACHEPAGE' ) && DONOTCACHEPAGE ) {
-			return false;
+			return $this->reject( 'donotcachepage' );
 		}
 
 		$error = error_get_last();
 		if ( null !== $error && ( $error['type'] & ( E_ERROR | E_CORE_ERROR | E_PARSE | E_COMPILE_ERROR | E_USER_ERROR ) ) ) {
-			return false;
+			return $this->reject( 'php-error' );
 		}
 
 		if ( function_exists( 'http_response_code' ) && http_response_code() >= 300 ) {
-			return false;
+			return $this->reject( 'status-' . http_response_code() );
 		}
 
 		foreach ( headers_list() as $header ) {
 			if ( 0 === stripos( $header, 'Content-Type:' ) && false === stripos( $header, 'text/html' ) ) {
-				return false;
+				return $this->reject( 'content-type' );
 			}
 			// A response that sets a cookie or declares itself private is
 			// personalized — caching it would hand one visitor's session
 			// or state to everyone.
 			if ( 0 === stripos( $header, 'Set-Cookie:' ) ) {
-				return false;
+				return $this->reject( 'set-cookie' );
 			}
 			if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/private|no-store|no-cache/i', $header ) ) {
-				return false;
+				return $this->reject( 'cache-control' );
 			}
 		}
 
 		// A page cut off mid-render (timeout, fatal in a late hook) must never
 		// be frozen into the cache.
 		if ( false === stripos( $buffer, '</html>' ) ) {
-			return false;
+			return $this->reject( 'truncated' );
 		}
 
 		if ( is_null( $wp_query ) || ! function_exists( 'is_404' ) ) {
-			return false;
+			return $this->reject( 'no-wp-query' );
 		}
 
 		if ( is_404() || is_search() || is_feed() || is_preview() || is_robots() || is_trackback() || is_user_logged_in() ) {
-			return false;
+			return $this->reject( 'page-type' );
 		}
 
 		if ( get_query_var( 'sitemap' ) || get_query_var( 'xsl' ) || get_query_var( 'xml_sitemap' ) ) {
-			return false;
+			return $this->reject( 'sitemap' );
 		}
 
 		if ( ! empty( $this->config['woocommerce_protection'] ) && function_exists( 'is_cart' ) && ( is_cart() || is_checkout() || is_account_page() ) ) {
-			return false;
+			return $this->reject( 'woocommerce' );
 		}
 
 		if ( function_exists( 'post_password_required' ) && is_singular() && post_password_required() ) {
-			return false;
+			return $this->reject( 'password' );
 		}
 
 		if ( is_singular() && get_post_meta( get_the_ID(), '_reallycache_skip', true ) ) {
-			return false;
+			return $this->reject( 'post-meta' );
 		}
 
-		return (bool) apply_filters( 'reallycache_should_cache', true, $buffer );
+		if ( ! apply_filters( 'reallycache_should_cache', true, $buffer ) ) {
+			return $this->reject( 'filter' );
+		}
+
+		return true;
+	}
+
+	private function reject( $reason ) {
+		$this->reject_reason = $reason;
+
+		return false;
 	}
 
 	private function has_login_cookie() {

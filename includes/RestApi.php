@@ -164,6 +164,29 @@ class RestApi {
 		return rest_ensure_response( $this->state() );
 	}
 
+	/**
+	 * Can the cache actually be written? A silent permission failure (for
+	 * example a wp-content/cache left behind root-owned by a previous cache
+	 * plugin) otherwise looks like everything works while nothing is saved.
+	 */
+	private function health() {
+		$root = WP_CONTENT_DIR . '/cache/reallycache';
+		if ( ! is_dir( $root ) ) {
+			wp_mkdir_p( $root );
+		}
+
+		$probe    = $root . '/.write-test';
+		$writable = is_dir( $root ) && false !== @file_put_contents( $probe, '1' );
+		if ( $writable ) {
+			@unlink( $probe );
+		}
+
+		return [
+			'cache_writable' => $writable,
+			'cache_root'     => 'wp-content/cache/reallycache',
+		];
+	}
+
 	/** Everything the admin app needs, in one payload. */
 	private function state() {
 		// Status polling doubles as the queue pump: every poll guarantees
@@ -206,8 +229,11 @@ class RestApi {
 				'name' => ServerDetector::label(),
 				'tier' => ServerDetector::best_available_tier(),
 			],
-			'dropin'     => file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
-			'woo_active' => class_exists( 'WooCommerce' ),
+			'dropin'      => file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
+			'dropin_ours' => is_file( WP_CONTENT_DIR . '/advanced-cache.php' )
+				&& false !== strpos( (string) file_get_contents( WP_CONTENT_DIR . '/advanced-cache.php' ), 'ReallyCache' ),
+			'health'      => $this->health(),
+			'woo_active'  => class_exists( 'WooCommerce' ),
 			'warm'       => Warmer::status(),
 			'webp'       => Media\Webp::status(),
 			'redis'      => Redis\Manager::status(),

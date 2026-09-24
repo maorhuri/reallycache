@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.6.1
+	Version: 0.6.2
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.6.1' );
+define( 'REALLYCACHE_VERSION', '0.6.2' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -70,17 +70,23 @@ add_action( 'plugins_loaded', function () {
 		load_plugin_textdomain( 'reallycache', false, dirname( plugin_basename( REALLYCACHE_FILE ) ) . '/languages' );
 	} );
 
-	// Keep the cacheable-host allowlist in sync with the site address, so
-	// the pre-WordPress gate can refuse arbitrary Host headers.
+	// Keep the cacheable-host allowlist in sync, so the pre-WordPress gate
+	// can refuse arbitrary Host headers. Besides home/site URL, the host an
+	// authenticated admin actually arrives on is trusted too — behind
+	// reverse proxies PHP can legitimately see a different HTTP_HOST than
+	// the public address, and rejecting it would silently disable caching.
 	add_action( 'admin_init', function () use ( $engine ) {
 		if ( wp_doing_ajax() || ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
-		$hosts = array_values( array_unique( array_filter( [
+		$current = (array) ( $engine->config()['allowed_hosts'] ?? [] );
+		$hosts   = array_slice( array_values( array_unique( array_filter( array_merge( $current, [
 			strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) ),
 			strtolower( (string) parse_url( site_url(), PHP_URL_HOST ) ),
-		] ) ) );
-		if ( $hosts && $hosts !== array_values( (array) ( $engine->config()['allowed_hosts'] ?? [] ) ) ) {
+			ReallyCache\CacheKey::sanitize_host( $_SERVER['HTTP_HOST'] ?? '' ),
+		] ) ) ) ), 0, 10 );
+
+		if ( $hosts && $hosts !== array_values( $current ) ) {
 			ReallyCache\Config::save( [ 'allowed_hosts' => $hosts ] );
 		}
 	} );
