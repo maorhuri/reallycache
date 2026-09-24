@@ -64,6 +64,9 @@ class Config {
 			// Cache WooCommerce's slow cart-fragments AJAX per cart state
 			// (needs a persistent object cache such as Redis to help).
 			'cart_fragments_cache'   => true,
+			// Effective fragments TTL, synced from the filterable value at
+			// WP time so the pre-WP serve path agrees with capture and GC.
+			'cart_fragments_ttl'     => 300,
 			// Delivery pack.
 			'webp_enabled'           => true,
 			'webp_on_upload'         => true,

@@ -78,29 +78,38 @@ class CacheKey {
 			return '';
 		}
 
-		// Only cookies WooCommerce itself could have minted earn a variant:
-		// the cart hash is always a 32-hex md5, and the session cookie is
-		// customer||expiry||expiring||hash. Anything else is a forgery that
-		// would otherwise mint one disk entry per made-up cookie value —
-		// forged shapes fall through to the live-page bypass instead.
-		if ( ! preg_match( '/^[a-f0-9]{32}$/', (string) $_COOKIE['woocommerce_cart_hash'] ) ) {
+		// Shape checks: the cart hash is always a 32-hex md5, and the
+		// session cookie — when present — is a customer id followed by
+		// pipe-delimited expiry/expiring/hash fields ("||" on classic
+		// WooCommerce, a single "|" on newer stacks — verified live —
+		// possibly %7C-encoded). These checks only filter obvious forgery
+		// noise; what actually bounds disk-entry minting is the per-URL
+		// variant cap in FileDriver::store(). Non-strings (array-shaped
+		// forged cookies) must not warn or fatal on the pre-WP path.
+		if ( ! is_string( $_COOKIE['woocommerce_cart_hash'] )
+			|| ! preg_match( '/^[a-f0-9]{32}$/', $_COOKIE['woocommerce_cart_hash'] ) ) {
 			return '';
 		}
 
 		$session = '';
 		foreach ( $_COOKIE as $name => $value ) {
-			if ( 0 === strpos( $name, 'wp_woocommerce_session_' ) ) {
-				$session = (string) $value;
+			if ( is_string( $value ) && 0 === strpos( (string) $name, 'wp_woocommerce_session_' ) ) {
+				$session = $value;
 				break;
 			}
 		}
-		// Guest ids look like "t_<hex>", logged-in ids are numeric — then
-		// "||expiry||expiring||hash" (arrives url-encoded on some stacks).
-		if ( '' !== $session && ! preg_match( '/^[A-Za-z0-9_\-]+(?:\|\||%7C%7C)/', $session ) ) {
+		if ( '' !== $session && ! preg_match( '/^[A-Za-z0-9_\-]+(?:\||%7[Cc])/', $session ) ) {
 			return '';
 		}
 
-		return '-c' . substr( md5( $_COOKIE['woocommerce_cart_hash'] . '|' . $session ), 0, 12 );
+		// The epoch cookie rotates on every cart mutation (set by
+		// CartFragments::on_cart_mutation, name hardcoded — this runs
+		// pre-WordPress). WooCommerce's own cookies can lag behind AJAX
+		// mutations, and without the epoch a stale-cookied browser would
+		// keep hitting its old variant until the TTL saved it.
+		$epoch = (string) ( $_COOKIE['rc_cart_epoch'] ?? '' );
+
+		return '-c' . substr( md5( $_COOKIE['woocommerce_cart_hash'] . '|' . $session . '|' . $epoch ), 0, 12 );
 	}
 
 	/** @return CacheKey|null Key for an arbitrary URL of this site (purge/lookup use). */

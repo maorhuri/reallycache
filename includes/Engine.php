@@ -54,6 +54,20 @@ class Engine {
 
 	/** Drop-in entry point: deliver a cached page and exit, or fall through. */
 	public function maybe_serve() {
+		// The cart-fragments AJAX is served pre-WordPress too: it is the
+		// request that makes stores feel slow with a cart (0.7–1.0s live),
+		// and a file hit here costs milliseconds instead of a WP boot. It
+		// must run before the page gate — fragments requests are POSTs
+		// with a query string, which the page rules rightly refuse.
+		if ( 'get_refreshed_fragments' === ( $_GET['wc-ajax'] ?? '' ) ) {
+			if ( ! class_exists( 'ReallyCache\\Compat\\CartFragments', false ) && is_file( __DIR__ . '/Compat/CartFragments.php' ) ) {
+				require_once __DIR__ . '/Compat/CartFragments.php';
+			}
+			if ( class_exists( 'ReallyCache\\Compat\\CartFragments', false ) ) {
+				Compat\CartFragments::early_serve( $this->config );
+			}
+		}
+
 		if ( empty( $this->config['cache_enabled'] ) || ! $this->gate->request_ok() ) {
 			return;
 		}
@@ -244,6 +258,11 @@ class Engine {
 
 	public function purge_all() {
 		$this->driver->purge_all();
+		// "Clear all" means the fragments store too — a stale mini-cart
+		// surviving a full purge reads as a bug to the person purging.
+		if ( class_exists( 'ReallyCache\\Compat\\CartFragments' ) ) {
+			Compat\CartFragments::purge_all();
+		}
 		do_action( 'reallycache_purged_all' );
 	}
 }

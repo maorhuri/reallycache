@@ -18,23 +18,79 @@ use ReallyCache\Config;
  * per visitor (session) so nothing leaks, and any change to the cart makes
  * a new hash → a fresh compute exactly once.
  *
- * Storage is a persistent object cache (Redis) when present, otherwise a
- * small JSON file under the cache tree — so the optimization works on
- * every server, with or without Redis.
+ * Storage is a small JSON file under the cache tree — always a file, never
+ * the object cache, because the fast path serves it from the drop-in
+ * BEFORE WordPress loads (see early_serve), where only the filesystem
+ * exists. A hit costs milliseconds; even a warm Redis hit at init time
+ * would still pay the full plugin boot first.
  */
 class CartFragments {
 
-	const GROUP = 'reallycache_fragments';
+	/**
+	 * Rotated on every cart mutation and folded into every cart cache key
+	 * (fragments AND page variants). WooCommerce's own cart_hash cookie
+	 * often fails to update on AJAX mutations — it is set on 'shutdown',
+	 * after the response is already out — leaving the browser with stale
+	 * cookies that would keep hitting stale cache entries, and a pre-WP
+	 * hit never boots the code that would heal them. This cookie is set
+	 * mid-request, while headers are still open, so a mutation always
+	 * moves the visitor to fresh keys even when WooCommerce's cookie lags.
+	 */
+	const EPOCH_COOKIE = 'rc_cart_epoch';
 
 	public static function register() {
 		add_action( 'init', [ __CLASS__, 'maybe_serve' ], 0 );
 		// Capture a freshly computed response on the way out and store it.
 		add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'capture' ], PHP_INT_MAX );
+
+		// Real cart changes only — never the page-load hooks like
+		// woocommerce_cart_loaded_from_session, or every view would
+		// invalidate the visitor's entry and kill the hit rate.
+		foreach ( [
+			'woocommerce_add_to_cart',
+			'woocommerce_cart_item_set_quantity',
+			'woocommerce_cart_item_removed',
+			'woocommerce_cart_item_restored',
+			'woocommerce_applied_coupon',
+			'woocommerce_removed_coupon',
+			'woocommerce_cart_emptied',
+		] as $hook ) {
+			add_action( $hook, [ __CLASS__, 'on_cart_mutation' ], 0, 0 );
+		}
+
+		// The drop-in cannot run apply_filters, so the effective TTL is
+		// resolved here and persisted into the config file it reads —
+		// same pattern as the allowed-hosts sync.
+		add_action( 'admin_init', function () {
+			$config = Config::load();
+			if ( (int) ( $config['cart_fragments_ttl'] ?? 0 ) !== self::ttl() ) {
+				Config::save( [ 'cart_fragments_ttl' => self::ttl() ] );
+			}
+		} );
 	}
 
-	/** True when a persistent object cache is available (Redis drop-in). */
-	private static function has_object_cache() {
-		return is_file( WP_CONTENT_DIR . '/object-cache.php' ) && function_exists( 'wp_cache_get' );
+	/**
+	 * A cart mutation makes the visitor's current cache entries lies.
+	 * Server side: drop the fragments entry their CURRENT cookies point
+	 * at (the exact entry a stale browser would keep hitting). Client
+	 * side: rotate the epoch cookie so every later request carries new
+	 * cache keys — fragments and page variants both.
+	 */
+	public static function on_cart_mutation() {
+		@unlink( self::file_for( self::key() ) );
+
+		if ( headers_sent() ) {
+			return; // Too late to reach the browser; the unlink above still helps.
+		}
+		$epoch = (string) time();
+		if ( function_exists( 'wc_setcookie' ) ) {
+			wc_setcookie( self::EPOCH_COOKIE, $epoch, time() + 2 * DAY_IN_SECONDS, is_ssl(), true );
+		} else {
+			setcookie( self::EPOCH_COOKIE, $epoch, time() + 2 * DAY_IN_SECONDS, '/', '', is_ssl(), true );
+		}
+		// Same-request consistency: a capture() later in this request must
+		// key on the epoch the browser is about to receive.
+		$_COOKIE[ self::EPOCH_COOKIE ] = $epoch;
 	}
 
 	private static function file_for( $key ) {
@@ -45,12 +101,6 @@ class CartFragments {
 
 	/** @return string|false */
 	private static function store_get( $key, $ttl ) {
-		if ( self::has_object_cache() ) {
-			$val = wp_cache_get( $key, self::GROUP );
-
-			return is_string( $val ) && '' !== $val ? $val : false;
-		}
-
 		$file = self::file_for( $key );
 		if ( ! is_file( $file ) ) {
 			return false;
@@ -67,12 +117,6 @@ class CartFragments {
 	}
 
 	private static function store_set( $key, $payload, $ttl ) {
-		if ( self::has_object_cache() ) {
-			wp_cache_set( $key, $payload, self::GROUP, $ttl );
-
-			return;
-		}
-
 		$dir = WP_CONTENT_DIR . '/cache/reallycache-fragments';
 		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
 			return;
@@ -95,6 +139,17 @@ class CartFragments {
 			@rename( $tmp, self::file_for( $key ) );
 		} else {
 			@unlink( $tmp );
+		}
+	}
+
+	/** Full wipe, part of the site-wide "clear all cache" action. */
+	public static function purge_all() {
+		$dir = WP_CONTENT_DIR . '/cache/reallycache-fragments';
+		foreach ( glob( $dir . '/*.json' ) ?: [] as $file ) {
+			@unlink( $file );
+		}
+		foreach ( glob( $dir . '/*.tmp' ) ?: [] as $file ) {
+			@unlink( $file );
 		}
 	}
 
@@ -123,10 +178,30 @@ class CartFragments {
 
 		// The cart hash is always a 32-hex md5 minted by WooCommerce; any
 		// other shape is a forged cookie that would mint a junk store entry
-		// per made-up value.
+		// per made-up value. The session cookie is REQUIRED: it is the only
+		// per-visitor secret in the key — without it, every session-less
+		// visitor with the same (computable) cart hash would share one
+		// entry, and one visitor's fragments could reach another.
 		return ! empty( $config['cart_fragments_cache'] )
-			&& preg_match( '/^[a-f0-9]{32}$/', (string) ( $_COOKIE['woocommerce_cart_hash'] ?? '' ) )
+			&& is_string( $_COOKIE['woocommerce_cart_hash'] ?? null )
+			&& preg_match( '/^[a-f0-9]{32}$/', $_COOKIE['woocommerce_cart_hash'] )
+			&& self::session_cookie_ok()
 			&& ! self::is_logged_in();
+	}
+
+	/**
+	 * True only when a shape-plausible WooCommerce session cookie is
+	 * present — pipe-delimited fields after the customer id ("||" classic,
+	 * "|" on newer stacks, possibly %7C-encoded). Pure PHP: runs pre-WP.
+	 */
+	private static function session_cookie_ok() {
+		foreach ( $_COOKIE as $name => $value ) {
+			if ( 0 === strpos( (string) $name, 'wp_woocommerce_session_' ) ) {
+				return is_string( $value ) && preg_match( '/^[A-Za-z0-9_\-]+(?:\||%7[Cc])/', $value );
+			}
+		}
+
+		return false;
 	}
 
 	private static function ttl() {
@@ -134,8 +209,14 @@ class CartFragments {
 	}
 
 	private static function is_logged_in() {
+		// Honors a renamed auth cookie when the constant exists (WP time);
+		// pre-WP the constant is not defined yet and the default prefix is
+		// the best signal available — same tradeoff Gate::has_login_cookie
+		// makes.
+		$prefix = defined( 'LOGGED_IN_COOKIE' ) ? LOGGED_IN_COOKIE : 'wordpress_logged_in_';
+
 		foreach ( array_keys( $_COOKIE ) as $name ) {
-			if ( 0 === strpos( $name, 'wordpress_logged_in_' ) ) {
+			if ( 0 === strpos( $name, $prefix ) || 0 === strpos( $name, 'wordpress_logged_in_' ) ) {
 				return true;
 			}
 		}
@@ -157,14 +238,21 @@ class CartFragments {
 	private static function key() {
 		$session = '';
 		foreach ( $_COOKIE as $name => $value ) {
-			if ( 0 === strpos( $name, 'wp_woocommerce_session_' ) ) {
-				$session = (string) $value;
+			if ( is_string( $value ) && 0 === strpos( (string) $name, 'wp_woocommerce_session_' ) ) {
+				$session = $value;
 				break;
 			}
 		}
 
-		$state  = (string) ( $_COOKIE['woocommerce_cart_hash'] ?? '' );
-		$state .= '|' . (string) ( $_COOKIE['woocommerce_items_in_cart'] ?? '' );
+		// Forged array-shaped cookies (name[]=1) must not warn or fatal —
+		// treat any non-string as absent.
+		$str = function ( $v ) {
+			return is_string( $v ) ? $v : '';
+		};
+
+		$state  = $str( $_COOKIE['woocommerce_cart_hash'] ?? null );
+		$state .= '|' . $str( $_COOKIE['woocommerce_items_in_cart'] ?? null );
+		$state .= '|' . $str( $_COOKIE[ self::EPOCH_COOKIE ] ?? null );
 
 		// The host keeps two sites sharing one wp-content (subdomain
 		// multisite) from resolving the same visitor to the same entry.
@@ -174,12 +262,58 @@ class CartFragments {
 	}
 
 	/**
-	 * Runs before WooCommerce processes the AJAX request. On a cache hit it
-	 * prints the stored JSON and exits, so WooCommerce never boots.
+	 * The fast path, called from the drop-in via Engine::maybe_serve()
+	 * BEFORE WordPress loads. Pure PHP only: no options, no filters, no
+	 * WP functions — the request never boots WordPress on a hit.
+	 *
+	 * @param array $config The already-loaded drop-in config array.
+	 */
+	public static function early_serve( array $config ) {
+		if ( empty( $config['cart_fragments_cache'] )
+			|| 'get_refreshed_fragments' !== ( $_GET['wc-ajax'] ?? '' )
+			|| isset( $_GET['nocache'] )
+			|| ( ! empty( $config['dev_mode_until'] ) && (int) $config['dev_mode_until'] > time() )
+			|| ! is_string( $_COOKIE['woocommerce_cart_hash'] ?? null )
+			|| ! preg_match( '/^[a-f0-9]{32}$/', $_COOKIE['woocommerce_cart_hash'] )
+			|| ! self::session_cookie_ok()
+			|| self::is_logged_in() ) {
+			return;
+		}
+
+		// The effective TTL is resolved at WP time (where the filter can
+		// run) and synced into the config file — both halves of the cache
+		// must agree, or the fast path would destroy entries a raised
+		// filter TTL still considers fresh.
+		$cached = self::store_get( self::key(), max( 30, (int) ( $config['cart_fragments_ttl'] ?? 300 ) ) );
+		if ( false === $cached ) {
+			// The MISS marker turns "is this feature even running?" into a
+			// one-curl question — the exact debugging that pays for itself.
+			header( 'X-ReallyCache-Fragments: MISS' );
+
+			return; // WordPress boots, WooCommerce computes, capture() stores.
+		}
+
+		header( 'Content-Type: application/json; charset=UTF-8' );
+		header( 'X-ReallyCache-Fragments: HIT' );
+		// nocache_headers() by hand — WordPress is not loaded yet.
+		header( 'Cache-Control: no-cache, must-revalidate, max-age=0, no-store, private' );
+		header( 'Expires: Wed, 11 Jan 1984 05:00:00 GMT' );
+		echo $cached; // phpcs:ignore — stored JSON we produced.
+		exit;
+	}
+
+	/**
+	 * Second chance at init, for sites whose drop-in is missing or stale:
+	 * WordPress and its plugins have loaded (the expensive part), but the
+	 * WooCommerce fragments compute is still skipped on a hit.
 	 */
 	public static function maybe_serve() {
-		if ( 'get_refreshed_fragments' !== ( $_GET['wc-ajax'] ?? '' ) || ! self::enabled() ) {
+		if ( 'get_refreshed_fragments' !== ( $_GET['wc-ajax'] ?? '' ) || ! self::enabled() || isset( $_GET['nocache'] ) ) {
 			return;
+		}
+		$config = Config::load();
+		if ( ! empty( $config['dev_mode_until'] ) && (int) $config['dev_mode_until'] > time() ) {
+			return; // Dev mode: fragments live, like everything else.
 		}
 
 		$cached = self::store_get( self::key(), self::ttl() );
@@ -208,6 +342,9 @@ class CartFragments {
 			] );
 			if ( is_string( $payload ) ) {
 				self::store_set( self::key(), $payload, self::ttl() );
+				if ( ! headers_sent() ) {
+					header( 'X-ReallyCache-Fragments: ' . ( is_file( self::file_for( self::key() ) ) ? 'STORED' : 'STORE-FAILED' ) );
+				}
 			}
 		}
 
