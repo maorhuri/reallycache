@@ -31,9 +31,12 @@ interface DriverInterface {
 	 * @param CacheKey $key
 	 * @param string   $html
 	 * @param int      $ttl
-	 * @param string[] $headers Security headers to replay on hits.
+	 * @param string[] $headers    Security headers to replay on hits.
+	 * @param bool     $ttl_capped True when $ttl overrides the configured
+	 *                             lifetime for this page (nonce cap) and
+	 *                             must be persisted alongside the entry.
 	 */
-	public function store( CacheKey $key, $html, $ttl, array $headers = [] );
+	public function store( CacheKey $key, $html, $ttl, array $headers = [], $ttl_capped = false );
 
 	/**
 	 * Tell the outer cache this response must not be stored. Only matters

@@ -21,6 +21,7 @@ class Warmer {
 	const STATE_OPTION = 'reallycache_warm_state';
 	const TOKEN_OPTION = 'reallycache_worker_token';
 	const TICK_HOOK    = 'reallycache_warm_tick';
+	const DAILY_HOOK   = 'reallycache_daily_warm';
 	const LOCK         = 'reallycache_warm_lock';
 
 	/**
@@ -345,6 +346,43 @@ class Warmer {
 		];
 	}
 
+	/**
+	 * Nightly full refresh: at the configured hour (site timezone) the
+	 * whole cache is purged and rebuilt through the gradual queue, so
+	 * every page starts the day with a fresh TTL. Self-rescheduling
+	 * single events keep the chosen hour exact across DST changes.
+	 */
+	public static function schedule_daily( array $config ) {
+		wp_clear_scheduled_hook( self::DAILY_HOOK );
+
+		if ( empty( $config['daily_warm'] ) ) {
+			return;
+		}
+
+		$hour = max( 0, min( 23, (int) ( $config['daily_warm_hour'] ?? 0 ) ) );
+		try {
+			$timezone = wp_timezone();
+			$next     = ( new \DateTimeImmutable( 'today', $timezone ) )->setTime( $hour, 0 );
+			if ( $next <= new \DateTimeImmutable( 'now', $timezone ) ) {
+				$next = $next->modify( '+1 day' );
+			}
+			$timestamp = $next->getTimestamp();
+		} catch ( \Throwable $e ) {
+			$timestamp = time() + DAY_IN_SECONDS;
+		}
+
+		wp_schedule_single_event( $timestamp, self::DAILY_HOOK );
+	}
+
+	public static function run_daily() {
+		$engine = \ReallyCache\Engine::instance();
+		if ( $engine ) {
+			$engine->purge_all();
+		}
+		self::seed_site();
+		self::schedule_daily( Config::load() );
+	}
+
 	/** Stop a running warm-up: drop the queue; an in-flight batch finishes. */
 	public static function stop() {
 		delete_option( self::QUEUE_OPTION );
@@ -365,6 +403,7 @@ class Warmer {
 		delete_option( self::LOCK );
 		delete_option( self::TOKEN_OPTION ); // Rotate the worker token.
 		wp_clear_scheduled_hook( self::TICK_HOOK );
+		wp_clear_scheduled_hook( self::DAILY_HOOK );
 	}
 
 	/** Shared secret for the public worker endpoints (loopbacks carry no cookies). */

@@ -491,6 +491,17 @@
 						} ).join( '' ) +
 					'</select>' +
 				'</div>' +
+				switchRow( 'daily_warm', t( 'row_daily' ), t( 'row_daily_desc' ) ) +
+				'<div class="rc-row">' +
+					'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_daily_hour' ) ) + '</div>' +
+						'<div class="rc-row-desc">' + esc( t( 'row_daily_hour_desc' ) ) + '</div></div>' +
+					'<select class="rc-select" data-field="daily_warm_hour">' +
+						Array.from( { length: 24 }, function ( _, h ) {
+							var label = ( h < 10 ? '0' + h : String( h ) ) + ':00';
+							return '<option value="' + h + '"' + ( model.daily_warm_hour === h ? ' selected' : '' ) + '>' + label + '</option>';
+						} ).join( '' ) +
+					'</select>' +
+				'</div>' +
 				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +

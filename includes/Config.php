@@ -26,6 +26,10 @@ class Config {
 			'smart_cache'           => true,
 			// Pages a full warm-up covers; 0 = the whole site, gradually.
 			'warm_max'              => 500,
+			// Nightly full refresh: purge everything and rebuild, so every
+			// page starts the day with a fresh TTL. Hour is site-timezone.
+			'daily_warm'            => true,
+			'daily_warm_hour'       => 0,
 			// Query parameters that never change page content. A request whose
 			// entire query string consists of these is served the base page.
 			'tracking_params'       => [

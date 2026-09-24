@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.6.3
+	Version: 0.6.4
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.6.3' );
+define( 'REALLYCACHE_VERSION', '0.6.4' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -61,6 +61,7 @@ add_action( 'plugins_loaded', function () {
 		$engine->driver()->gc( $engine->config()['ttl'] );
 	} );
 	add_action( ReallyCache\Warmer::TICK_HOOK, [ 'ReallyCache\\Warmer', 'tick' ] );
+	add_action( ReallyCache\Warmer::DAILY_HOOK, [ 'ReallyCache\\Warmer', 'run_daily' ] );
 	add_action( ReallyCache\Media\Webp::TICK_HOOK, [ 'ReallyCache\\Media\\Webp', 'tick' ] );
 	ReallyCache\Media\Webp::register();
 	ReallyCache\Media\LcpBoost::register();
@@ -88,6 +89,11 @@ add_action( 'plugins_loaded', function () {
 
 		if ( $hosts && $hosts !== array_values( $current ) ) {
 			ReallyCache\Config::save( [ 'allowed_hosts' => $hosts ] );
+		}
+
+		// Self-heal the nightly-refresh schedule if cron lost it.
+		if ( ! empty( $engine->config()['daily_warm'] ) && ! wp_next_scheduled( ReallyCache\Warmer::DAILY_HOOK ) ) {
+			ReallyCache\Warmer::schedule_daily( $engine->config() );
 		}
 	} );
 } );

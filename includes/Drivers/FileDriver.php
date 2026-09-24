@@ -36,6 +36,12 @@ class FileDriver implements DriverInterface {
 		if ( ! $mtime ) {
 			return;
 		}
+		// A per-page lifetime (nonce cap) stored with the entry overrides
+		// the configured one — even a "permanent" cache expires such pages.
+		$page_ttl = $this->stored_ttl( $file );
+		if ( null !== $page_ttl ) {
+			$ttl = $page_ttl;
+		}
 		// TTL 0 means permanent: pages live until a purge removes them.
 		if ( $ttl > 0 && ( time() - $mtime ) > $ttl ) {
 			return; // Stale entries are treated as a miss; gc() removes them.
@@ -51,15 +57,9 @@ class FileDriver implements DriverInterface {
 
 		// Replay the security headers captured when the page was stored —
 		// on a hit PHP never runs the code that would send them.
-		$meta = @file_get_contents( $file . '.h.json' );
-		if ( $meta ) {
-			$headers = json_decode( $meta, true );
-			if ( is_array( $headers ) ) {
-				foreach ( $headers as $stored_header ) {
-					if ( is_string( $stored_header ) && ! preg_match( '/[\r\n]/', $stored_header ) ) {
-						header( $stored_header );
-					}
-				}
+		foreach ( $this->stored_headers( $file ) as $stored_header ) {
+			if ( is_string( $stored_header ) && ! preg_match( '/[\r\n]/', $stored_header ) ) {
+				header( $stored_header );
 			}
 		}
 
@@ -83,7 +83,7 @@ class FileDriver implements DriverInterface {
 		exit;
 	}
 
-	public function store( CacheKey $key, $html, $ttl, array $headers = [] ) {
+	public function store( CacheKey $key, $html, $ttl, array $headers = [], $ttl_capped = false ) {
 		$file = $this->path_for( $key );
 		if ( null === $file ) {
 			return;
@@ -96,8 +96,12 @@ class FileDriver implements DriverInterface {
 
 		$this->ensure_root_guard();
 
-		if ( $headers ) {
-			@file_put_contents( $file . '.h.json', (string) wp_json_encode( array_values( $headers ) ) );
+		if ( $headers || $ttl_capped ) {
+			$meta = [ 'h' => array_values( $headers ) ];
+			if ( $ttl_capped ) {
+				$meta['ttl'] = (int) $ttl;
+			}
+			@file_put_contents( $file . '.h.json', (string) wp_json_encode( $meta ) );
 		} elseif ( is_file( $file . '.h.json' ) ) {
 			@unlink( $file . '.h.json' );
 		}
@@ -198,6 +202,35 @@ class FileDriver implements DriverInterface {
 		}
 
 		return [ 'pages' => $pages, 'size' => $size ];
+	}
+
+	/** @return array Decoded sidecar metadata, or [] when absent/invalid. */
+	private function meta_for( $file ) {
+		$raw = @file_get_contents( $file . '.h.json' );
+		if ( ! $raw ) {
+			return [];
+		}
+		$meta = json_decode( $raw, true );
+
+		return is_array( $meta ) ? $meta : [];
+	}
+
+	/** @return string[] */
+	private function stored_headers( $file ) {
+		$meta = $this->meta_for( $file );
+		if ( isset( $meta['h'] ) && is_array( $meta['h'] ) ) {
+			return $meta['h'];
+		}
+
+		// Pre-0.6.4 sidecars were a plain list of header strings.
+		return isset( $meta[0] ) ? $meta : [];
+	}
+
+	/** @return int|null Per-page TTL override, when one was stored. */
+	private function stored_ttl( $file ) {
+		$meta = $this->meta_for( $file );
+
+		return isset( $meta['ttl'] ) ? (int) $meta['ttl'] : null;
 	}
 
 	/** Keeps directory listings of the cache tree from enumerating cached URLs. */

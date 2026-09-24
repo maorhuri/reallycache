@@ -123,7 +123,21 @@ class Engine {
 		}
 		$html .= "\n<!-- Cached by ReallyCache on " . gmdate( 'Y-m-d H:i:s' ) . " UTC -->";
 
-		$this->driver->store( $key, $html, (int) $this->config['ttl'], $this->security_headers() );
+		// A page carrying a WordPress nonce must not outlive the nonce
+		// (12–24h), or its AJAX features (infinite scroll, forms) die with
+		// an expired token. Such pages get a capped lifetime even when the
+		// site-wide setting is "permanent".
+		$ttl    = (int) $this->config['ttl'];
+		$capped = false;
+		if ( self::contains_nonce( $html ) ) {
+			$cap = max( HOUR_IN_SECONDS, (int) apply_filters( 'reallycache_nonce_ttl', 10 * HOUR_IN_SECONDS ) );
+			if ( $ttl <= 0 || $ttl > $cap ) {
+				$ttl    = $cap;
+				$capped = true;
+			}
+		}
+
+		$this->driver->store( $key, $html, $ttl, $this->security_headers(), $capped );
 
 		// Verify the write actually landed — a silent mkdir/permission
 		// failure otherwise looks like caching works while nothing is saved.
@@ -134,6 +148,21 @@ class Engine {
 		}
 
 		return $html;
+	}
+
+	/**
+	 * Detects the usual shapes a WordPress nonce takes inside a page:
+	 * a _wpnonce URL parameter or form field, a localized-script value
+	 * ("nonce"/"security"/"_ajax_nonce": "hex"), or a data-nonce attribute.
+	 */
+	public static function contains_nonce( $html ) {
+		return (bool) preg_match(
+			'/[?&;]_wpnonce=[a-f0-9]{8,12}\b'
+			. '|name=["\']_wpnonce["\']'
+			. '|["\'](?:nonce|_ajax_nonce|_wpnonce|security)["\']\s*[:=]\s*["\'][a-f0-9]{8,12}["\']'
+			. '|data-nonce=["\'][a-f0-9]{8,12}["\']/i',
+			$html
+		);
 	}
 
 	/**

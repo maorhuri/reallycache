@@ -67,7 +67,7 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'font_display_swap', 'browser_cache', 'redis_object_cache' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'daily_warm', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'font_display_swap', 'browser_cache', 'redis_object_cache' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
@@ -82,6 +82,9 @@ class RestApi {
 		if ( array_key_exists( 'warm_max', $body ) ) {
 			$changes['warm_max'] = max( 0, (int) $body['warm_max'] );
 		}
+		if ( array_key_exists( 'daily_warm_hour', $body ) ) {
+			$changes['daily_warm_hour'] = max( 0, min( 23, (int) $body['daily_warm_hour'] ) );
+		}
 		foreach ( [ 'excluded_uris', 'excluded_user_agents', 'redis_excluded_groups' ] as $list ) {
 			if ( array_key_exists( $list, $body ) ) {
 				$lines             = is_array( $body[ $list ] ) ? $body[ $list ] : preg_split( '/\r\n|\r|\n/', (string) $body[ $list ] );
@@ -95,6 +98,7 @@ class RestApi {
 
 		BrowserCache::sync( $config );
 		Redis\Manager::sync( $config );
+		Warmer::schedule_daily( $config );
 
 		// Elementor keeps generated CSS (including @font-face for custom
 		// fonts) on disk; regenerate it so a font-display change lands.
@@ -205,6 +209,8 @@ class RestApi {
 				'separate_mobile'      => (bool) $config['separate_mobile'],
 				'smart_cache'            => (bool) $config['smart_cache'],
 				'warm_max'               => (int) ( $config['warm_max'] ?? 500 ),
+				'daily_warm'             => (bool) ( $config['daily_warm'] ?? true ),
+				'daily_warm_hour'        => (int) ( $config['daily_warm_hour'] ?? 0 ),
 				'woocommerce_protection' => (bool) $config['woocommerce_protection'],
 				'webp_enabled'           => (bool) $config['webp_enabled'],
 				'webp_on_upload'         => (bool) $config['webp_on_upload'],
