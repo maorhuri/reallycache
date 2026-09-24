@@ -365,6 +365,7 @@
 				'<div class="rc-media-stat">' + esc( t( 'redis_hits_label' ) ) + '<strong data-el="redis-hits">' + esc( formatNumber( ins.hits ) ) + '</strong></div>' +
 				'<div class="rc-media-stat">' + esc( t( 'redis_keys_label' ) ) + '<strong data-el="redis-keys">' + esc( formatNumber( ins.keys ) ) + '</strong></div>' +
 				'<div class="rc-media-stat">' + esc( t( 'redis_memory_label' ) ) + '<strong data-el="redis-mem">' + esc( ins.memory || '—' ) + '</strong></div>' +
+				( ins.latency_us ? '<div class="rc-media-stat">' + esc( t( 'redis_latency_label' ) ) + '<strong>' + esc( String( ins.latency_us ) ) + 'µs</strong></div>' : '' ) +
 			'</div>';
 
 			var chips = Object.keys( ins.groups || {} ).map( function ( group ) {

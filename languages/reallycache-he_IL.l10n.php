@@ -109,6 +109,7 @@ return [
 		'Queries from RAM' => 'שאילתות מה-RAM',
 		'Keys stored' => 'מפתחות שמורים',
 		'Redis memory' => 'זיכרון Redis',
+		'Avg op latency' => 'זמן פעולה ממוצע',
 		'What lives in Redis right now:' => 'מה נמצא ב-Redis כרגע:',
 		'Default expiry' => 'תוקף ברירת מחדל',
 		'Entries without an expiry of their own are capped at this age' => 'רשומות בלי תוקף משלהן מוגבלות לגיל הזה',

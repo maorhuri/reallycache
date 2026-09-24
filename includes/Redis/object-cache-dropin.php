@@ -1,6 +1,6 @@
 <?php
 /**
- * ReallyCache Redis object cache drop-in. Drop-in version: 4
+ * ReallyCache Redis object cache drop-in. Drop-in version: 5
  *
  * Fail-open by design: if Redis is unreachable at any point, the cache
  * degrades to a per-request in-memory cache and the site keeps working.
@@ -293,10 +293,60 @@ class WP_Object_Cache {
 		return false;
 	}
 
+	/**
+	 * Batched via MGET: WordPress asks for dozens of keys at once (posts,
+	 * metadata), and one roundtrip instead of N is the difference between
+	 * a cache that helps and one you can't feel.
+	 */
 	public function get_multiple( $keys, $group = 'default', $force = false ) {
+		$group  = $group ?: 'default';
 		$values = [];
+		$fetch  = [];
+
 		foreach ( $keys as $key ) {
-			$values[ $key ] = $this->get( $key, $group, $force );
+			if ( ! $force && isset( $this->cache[ $group ] ) && array_key_exists( $key, $this->cache[ $group ] ) ) {
+				$this->cache_hits ++;
+				$value          = $this->cache[ $group ][ $key ];
+				$values[ $key ] = is_object( $value ) ? clone $value : $value;
+			} else {
+				$values[ $key ] = false;
+				$fetch[]        = $key;
+			}
+		}
+
+		if ( empty( $fetch ) ) {
+			return $values;
+		}
+
+		if ( ! $this->persistent( $group ) ) {
+			$this->cache_misses += count( $fetch );
+			return $values;
+		}
+
+		try {
+			$rkeys = [];
+			foreach ( $fetch as $key ) {
+				$rkeys[] = $this->redis_key( $key, $group );
+			}
+			$raws = $this->redis->mGet( $rkeys );
+
+			foreach ( $fetch as $i => $key ) {
+				$stored = is_array( $raws ) && array_key_exists( $i, $raws ) ? $raws[ $i ] : false;
+				$raw    = false === $stored ? false : $this->verify( $stored );
+				if ( false !== $raw ) {
+					$value                         = unserialize( $raw ); // phpcs:ignore
+					$this->cache[ $group ][ $key ] = $value;
+					$values[ $key ]                = is_object( $value ) ? clone $value : $value;
+					$this->cache_hits ++;
+					$this->redis_hits ++;
+				} else {
+					$this->cache_misses ++;
+					$this->redis_misses ++;
+				}
+			}
+		} catch ( Throwable $e ) {
+			$this->redis         = null;
+			$this->cache_misses += count( $fetch );
 		}
 
 		return $values;

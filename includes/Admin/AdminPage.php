@@ -258,6 +258,7 @@ class AdminPage {
 			'redis_hits_label' => __( 'Queries from RAM', 'reallycache' ),
 			'redis_keys_label' => __( 'Keys stored', 'reallycache' ),
 			'redis_memory_label' => __( 'Redis memory', 'reallycache' ),
+			'redis_latency_label' => __( 'Avg op latency', 'reallycache' ),
 			'redis_groups_title' => __( 'What lives in Redis right now:', 'reallycache' ),
 			'row_redis_ttl'    => __( 'Default expiry', 'reallycache' ),
 			'row_redis_ttl_desc' => __( 'Entries without an expiry of their own are capped at this age', 'reallycache' ),

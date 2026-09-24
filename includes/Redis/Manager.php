@@ -118,7 +118,7 @@ class Manager {
 
 	/** Redeploy our drop-in when the plugin ships a newer version of it. */
 	private static function maybe_refresh_dropin() {
-		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 4' ) ) {
+		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 5' ) ) {
 			copy( REALLYCACHE_DIR . '/includes/Redis/object-cache-dropin.php', self::dropin_path() );
 		}
 	}
@@ -156,6 +156,13 @@ class Manager {
 			$hits   = (int) $redis->get( $prefix . 'stats:hits' );
 			$misses = (int) $redis->get( $prefix . 'stats:misses' );
 
+			// Measured per-op latency — numbers instead of "feels faster".
+			$start = microtime( true );
+			for ( $i = 0; $i < 30; $i ++ ) {
+				$redis->get( $prefix . 'stats:hits' );
+			}
+			$latency_us = (int) round( ( microtime( true ) - $start ) / 30 * 1000000 );
+
 			$keys   = 0;
 			$groups = [];
 			$cursor = null;
@@ -178,12 +185,13 @@ class Manager {
 			arsort( $groups );
 
 			$insights = [
-				'hits'     => $hits,
-				'misses'   => $misses,
-				'hit_rate' => ( $hits + $misses ) > 0 ? (int) round( $hits * 100 / ( $hits + $misses ) ) : 0,
-				'keys'     => $keys,
-				'memory'   => (string) ( $info['used_memory_human'] ?? '' ),
-				'groups'   => array_slice( $groups, 0, 10, true ),
+				'hits'       => $hits,
+				'misses'     => $misses,
+				'hit_rate'   => ( $hits + $misses ) > 0 ? (int) round( $hits * 100 / ( $hits + $misses ) ) : 0,
+				'keys'       => $keys,
+				'memory'     => (string) ( $info['used_memory_human'] ?? '' ),
+				'latency_us' => $latency_us,
+				'groups'     => array_slice( $groups, 0, 10, true ),
 			];
 			$redis->close();
 

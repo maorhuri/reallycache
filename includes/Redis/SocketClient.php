@@ -27,7 +27,11 @@ class SocketClient {
 
 		$errno  = 0;
 		$errstr = '';
-		$sock   = @stream_socket_client( $target, $errno, $errstr, (float) $timeout );
+		// TCP_NODELAY is essential: Redis traffic is thousands of tiny
+		// request/reply packets, and Nagle's algorithm delays each one —
+		// without this the client can be slower than no cache at all.
+		$context = stream_context_create( [ 'socket' => [ 'tcp_nodelay' => true ] ] );
+		$sock    = @stream_socket_client( $target, $errno, $errstr, (float) $timeout, STREAM_CLIENT_CONNECT, $context );
 		if ( ! $sock ) {
 			return false;
 		}
@@ -78,6 +82,23 @@ class SocketClient {
 		}
 
 		return (int) $this->cmd( 'UNLINK', ...array_map( 'strval', $keys ) );
+	}
+
+	/**
+	 * Batched fetch — one roundtrip for any number of keys, aligned with
+	 * the input order (false for missing keys), phpredis-compatible.
+	 *
+	 * @param string[] $keys
+	 * @return array|false
+	 */
+	public function mGet( array $keys ) {
+		if ( empty( $keys ) ) {
+			return [];
+		}
+
+		$reply = $this->cmd( 'MGET', ...array_map( 'strval', $keys ) );
+
+		return is_array( $reply ) ? $reply : false;
 	}
 
 	public function incrBy( $key, $amount ) {
