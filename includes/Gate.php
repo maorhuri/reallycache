@@ -173,21 +173,23 @@ class Gate {
 
 	/**
 	 * True only when a Set-Cookie header carries a cookie that marks
-	 * personalized state (login, cart, comment author, EDD, sessions with
-	 * a real value). A bare session cookie set by session_start() with an
-	 * empty or brand-new value is treated as benign.
+	 * personalized state in THIS response. Context matters: request_ok()
+	 * already guaranteed the request arrived cookie-less, so a WooCommerce
+	 * guest-session cookie born here (some plugins spawn one on every
+	 * page) belongs to an empty, generic session — the HTML is identical
+	 * for everyone and safe to cache. The cookie itself is never stored
+	 * or replayed, and a visitor CARRYING that cookie still bypasses the
+	 * cache at request time. Cookies that imply the page content itself
+	 * is personal (login, post password, cart contents) still block.
 	 */
 	private function set_cookie_is_personal( $header ) {
 		$value = trim( substr( $header, strlen( 'Set-Cookie:' ) ) );
 		$name  = strtolower( trim( strtok( $value, '=' ) ) );
 
-		$personal_prefixes = array_map( 'strtolower', array_merge(
-			[ 'wordpress_logged_in_', 'wordpress_sec_', 'comment_author_', 'wp-postpass_', 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'wp_woocommerce_session_', 'edd_items_in_cart', 'edd_cart_token' ],
-			(array) ( $this->config['bypass_cookies'] ?? [] )
-		) );
+		$personal_prefixes = [ 'wordpress_logged_in_', 'wordpress_sec_', 'comment_author_', 'wp-postpass_', 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'edd_items_in_cart', 'edd_cart_token' ];
 
 		foreach ( $personal_prefixes as $prefix ) {
-			if ( '' !== $prefix && 0 === strpos( $name, $prefix ) ) {
+			if ( 0 === strpos( $name, $prefix ) ) {
 				return true;
 			}
 		}
