@@ -334,8 +334,13 @@
 		}
 
 		var style = 'padding-block-end:10px' + ( green ? ';color:var(--rc-ok)' : '' );
+		var html  = '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
 
-		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
+		if ( state.woo_fragments ) {
+			html += '<div class="rc-row-desc" style="padding-block-end:10px;color:var(--rc-ok)">' + esc( t( 'woo_fragments' ) ) + '</div>';
+		}
+
+		return html;
 	}
 
 	function tabsHtml() {

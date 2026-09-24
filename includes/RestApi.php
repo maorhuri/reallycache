@@ -68,7 +68,7 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'daily_warm', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'font_display_swap', 'datauri_extract', 'browser_cache', 'redis_object_cache' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'daily_warm', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'font_display_swap', 'datauri_extract', 'browser_cache', 'redis_object_cache', 'cart_fragments_cache' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
@@ -260,6 +260,7 @@ class RestApi {
 			'woo_active'  => class_exists( 'WooCommerce' ),
 			'woo_cart_cache' => $config['cart_cache_ok'] ?? null,
 			'woo_cart_variant' => ! empty( $config['cart_variant_cache'] ),
+			'woo_fragments'    => ! empty( $config['cart_fragments_cache'] ) && ! empty( $config['redis_object_cache'] ),
 			'warm'       => Warmer::status(),
 			'webp'       => Media\Webp::status(),
 			'redis'      => Redis\Manager::status(),

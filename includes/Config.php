@@ -59,6 +59,9 @@ class Config {
 			// state its own short-lived private cache entry instead of
 			// falling back to live pages.
 			'cart_variant_cache'     => true,
+			// Cache WooCommerce's slow cart-fragments AJAX per cart state
+			// (needs a persistent object cache such as Redis to help).
+			'cart_fragments_cache'   => true,
 			// Delivery pack.
 			'webp_enabled'           => true,
 			'webp_on_upload'         => true,
