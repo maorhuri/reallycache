@@ -75,6 +75,7 @@ return [
 		'✓ Cart fragments cached — the slow mini-cart refresh that fires on every page with a cart now returns in milliseconds' => '✓ ה-fragments של העגלה נשמרים בקאש — רענון העגלה האיטי שנורה בכל עמוד עם עגלה חוזר עכשיו במילי-שניות',
 		'Checking whether the theme supports cached pages for visitors with a cart…' => 'בודק אם התבנית תומכת בקאש גם לגולשים עם עגלה…',
 		'Show what differs with a cart (diagnostic)' => 'הצג מה שונה כשיש עגלה (אבחון)',
+		'Could not build a test cart to verify the theme (no purchasable product found) — running in the safe private-copy mode meanwhile; re-trying daily' => 'לא הצלחנו לבנות עגלת-בדיקה כדי לאמת את התבנית (לא נמצא מוצר שניתן להוסיף) — בינתיים רץ מצב העותק-הפרטי הבטוח; מנסים שוב מדי יום',
 		'Check now' => 'בדיקה עכשיו',
 		'WooCommerce protection' => 'הגנת WooCommerce',
 		'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache' => 'עמודי העגלה, התשלום והאזור האישי מזוהים אוטומטית מהגדרות ווקומרס ולא נשמרים בקאש, וגולשים עם עגלה תמיד עוקפים את הקאש',

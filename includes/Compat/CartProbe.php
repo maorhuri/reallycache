@@ -29,7 +29,7 @@ class CartProbe {
 	const HOOK = 'reallycache_cart_probe';
 
 	/** Bumped when the algorithm changes — stale verdicts re-judge themselves. */
-	const ALGO_VERSION = 3;
+	const ALGO_VERSION = 4;
 
 	public static function register() {
 		add_action( self::HOOK, [ __CLASS__, 'run' ] );
@@ -94,19 +94,21 @@ class CartProbe {
 
 		$html_a = self::fetch( $page );
 		if ( null === $html_a ) {
-			self::conclude( false, true );
+			self::conclude( false, true, '', 'fetch-fail' );
 			return;
 		}
 
 		$cookies = self::build_probe_cart();
 		if ( null === $cookies ) {
-			self::conclude( false, true ); // Couldn't build a cart — retry tomorrow.
+			// Couldn't build a cart — the theme was never actually tested;
+			// the UI must say so instead of blaming server-side rendering.
+			self::conclude( false, true, '', 'no-cart' );
 			return;
 		}
 
 		$html_b = self::fetch( $page, $cookies );
 		if ( null === $html_b ) {
-			self::conclude( false, true );
+			self::conclude( false, true, '', 'fetch-fail' );
 			return;
 		}
 
@@ -123,7 +125,7 @@ class CartProbe {
 		$na = self::normalize( $html_a );
 		$nb = self::normalize( $html_b );
 
-		self::conclude( $na === $nb, false, $na === $nb ? '' : self::diff_snippet( $na, $nb ) );
+		self::conclude( $na === $nb, false, $na === $nb ? '' : self::diff_snippet( $na, $nb ), $na === $nb ? '' : 'diff' );
 	}
 
 	/**
@@ -170,8 +172,11 @@ class CartProbe {
 
 	/**
 	 * Builds a real probe cart through ?wc-ajax=add_to_cart — the same
-	 * endpoint store buttons use — trying up to five in-stock simple
-	 * products (variable products need chosen options and would fail).
+	 * endpoint store buttons use. Simple products first; on
+	 * variations-only catalogs (where a plain add would fail and the
+	 * probe used to give up), in-stock variation IDs are tried too —
+	 * WC_Cart::add_to_cart() accepts a variation ID directly and
+	 * resolves its parent and attributes.
 	 *
 	 * @return array|null The cart cookies, or null when no product took.
 	 */
@@ -185,6 +190,19 @@ class CartProbe {
 				'limit'        => 5,
 				'return'       => 'ids',
 			] );
+			$candidates = array_merge( $candidates, wc_get_products( [
+				'status'       => 'publish',
+				'type'         => 'variation',
+				'stock_status' => 'instock',
+				'limit'        => 5,
+				'return'       => 'ids',
+			] ) );
+			// Only purchasable candidates are worth an HTTP attempt.
+			$candidates = array_values( array_filter( $candidates, function ( $id ) {
+				$product = wc_get_product( $id );
+
+				return $product && $product->is_purchasable() && $product->is_in_stock();
+			} ) );
 		}
 		if ( empty( $candidates ) ) {
 			$candidates = get_posts( [
@@ -283,11 +301,12 @@ class CartProbe {
 	}
 
 	/** @param bool $retry_soon True re-runs tomorrow instead of next week. */
-	private static function conclude( $ok, $retry_soon, $diff = '' ) {
+	private static function conclude( $ok, $retry_soon, $diff = '', $note = '' ) {
 		Config::save( [
 			'cart_cache_ok'   => (bool) $ok,
 			'cart_probe_at'   => $retry_soon ? time() - ( WEEK_IN_SECONDS - DAY_IN_SECONDS ) : time(),
 			'cart_probe_diff' => (string) $diff,
+			'cart_probe_note' => (string) $note,
 		] );
 	}
 
@@ -299,9 +318,14 @@ class CartProbe {
 	 */
 	private static function normalize( $html ) {
 		$html = preg_replace( '/([?&;]_wpnonce=)[a-f0-9]{6,}/i', '$1X', $html );
-		$html = preg_replace( '/"[a-f0-9]{10}"/', '"X"', $html );
-		$html = preg_replace( "/'[a-f0-9]{10}'/", "'X'", $html );
-		$html = preg_replace( '/"[a-f0-9]{32}"/', '"X"', $html );
+		$html = preg_replace( '/"[a-f0-9]{10}"/i', '"X"', $html );
+		$html = preg_replace( "/'[a-f0-9]{10}'/i", "'X'", $html );
+		$html = preg_replace( '/"[a-f0-9]{32}"/i', '"X"', $html );
+		$html = preg_replace( "/'[a-f0-9]{32}'/i", "'X'", $html );
+		// Wordfence live-traffic beacon: a random per-request hex id inside
+		// its inline script URL — pure noise, and the exact thing that
+		// wrongly failed an otherwise cart-identical theme (ordman).
+		$html = preg_replace( '/([?&;]hid=)[a-f0-9]{8,64}/i', '$1X', $html );
 		$html = preg_replace( '/<script\b[^>]*>(?:(?!<\/script>)[\s\S])*_wca\.push[\s\S]*?<\/script>/', '~S~', $html );
 
 		$html = apply_filters( 'reallycache_cart_probe_normalize', $html );

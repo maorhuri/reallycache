@@ -329,8 +329,14 @@
 			text  = t( 'woo_cart_ok' );
 			green = true;
 		} else if ( false === v ) {
-			text  = state.woo_cart_variant ? t( 'woo_cart_variant' ) : t( 'woo_cart_safe' );
-			green = !! state.woo_cart_variant;
+			if ( 'diff' === state.woo_cart_note ) {
+				text  = state.woo_cart_variant ? t( 'woo_cart_variant' ) : t( 'woo_cart_safe' );
+				green = !! state.woo_cart_variant;
+			} else {
+				// The probe never managed to test the theme (no purchasable
+				// product / fetch failure) — say that, don't blame the theme.
+				text = t( 'woo_cart_untested' );
+			}
 		}
 
 		var style = 'padding-block-end:10px' + ( green ? ';color:var(--rc-ok)' : '' );
