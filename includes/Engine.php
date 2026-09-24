@@ -73,8 +73,8 @@ class Engine {
 		}
 
 		if ( ! $this->gate->request_ok() ) {
-			// Request-level bypass (cookies, method, exclusions…).
-			@header( 'X-ReallyCache: SKIP' );
+			// Request-level bypass — the reason names the exact rule.
+			@header( 'X-ReallyCache: SKIP-' . ( $this->gate->reject_reason ?: 'unknown' ) );
 			return;
 		}
 

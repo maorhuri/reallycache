@@ -25,25 +25,27 @@ class Gate {
 
 	/** Cheap, WP-free checks. Gates both serving and storing. */
 	public function request_ok() {
+		$this->reject_reason = '';
+
 		if ( ! empty( $this->config['dev_mode_until'] ) && $this->config['dev_mode_until'] > time() ) {
-			return false;
+			return $this->reject( 'dev-mode' );
 		}
 
 		if ( 'GET' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
-			return false;
+			return $this->reject( 'method-' . strtolower( $_SERVER['REQUEST_METHOD'] ?? 'none' ) );
 		}
 
 		foreach ( [ 'WP_CLI', 'DOING_CRON', 'REST_REQUEST', 'JSON_REQUEST', 'WC_API_REQUEST', 'WP_ADMIN', 'DOING_AJAX', 'XMLRPC_REQUEST' ] as $const ) {
 			if ( defined( $const ) && constant( $const ) ) {
-				return false;
+				return $this->reject( strtolower( $const ) );
 			}
 		}
 		if ( defined( 'WP_USE_THEMES' ) && false === WP_USE_THEMES ) {
-			return false;
+			return $this->reject( 'no-themes' );
 		}
 
 		if ( isset( $_GET['customize_changeset_uuid'] ) || isset( $_POST['wp_customize'] ) || isset( $_GET['preview'] ) ) {
-			return false;
+			return $this->reject( 'customizer' );
 		}
 
 		// Never-cache query parameters: per-request tokens, non-idempotent
@@ -51,21 +53,30 @@ class Gate {
 		// ?nocache on any URL always shows the live site (no serve, no store).
 		foreach ( [ '_wpnonce', 'wc-ajax', 'add-to-cart', 'remove_item', 'removed_item', 'action', 'doing_wp_cron', 'add_to_wishlist', 's', 'nocache' ] as $param ) {
 			if ( isset( $_GET[ $param ] ) ) {
-				return false;
+				return $this->reject( 'param-' . $param );
 			}
 		}
 
-		if ( $this->has_login_cookie() || $this->has_bypass_cookie() ) {
-			return false;
+		if ( $this->has_login_cookie() ) {
+			return $this->reject( 'logged-in' );
+		}
+		if ( $this->has_bypass_cookie() ) {
+			return $this->reject( 'cookie' );
 		}
 
-		if ( $this->uri_is_excluded() || $this->woo_uri_is_excluded() || $this->user_agent_is_excluded() ) {
-			return false;
+		if ( $this->uri_is_excluded() ) {
+			return $this->reject( 'excluded-uri' );
+		}
+		if ( $this->woo_uri_is_excluded() ) {
+			return $this->reject( 'woo-uri' );
+		}
+		if ( $this->user_agent_is_excluded() ) {
+			return $this->reject( 'excluded-ua' );
 		}
 
 		$uri_path = strtok( $_SERVER['REQUEST_URI'] ?? '/', '?' );
 		if ( preg_match( '#^/(wp-admin|wp-login\.php|wp-cron\.php|xmlrpc\.php|wp-json)([/?]|$)#', $uri_path ) ) {
-			return false;
+			return $this->reject( 'wp-path' );
 		}
 
 		return true;
