@@ -95,14 +95,36 @@ class Gate {
 			if ( 0 === stripos( $header, 'Content-Type:' ) && false === stripos( $header, 'text/html' ) ) {
 				return $this->reject( 'content-type' );
 			}
-			// A response that sets a cookie or declares itself private is
-			// personalized — caching it would hand one visitor's session
-			// or state to everyone.
-			if ( 0 === stripos( $header, 'Set-Cookie:' ) ) {
+			// A Set-Cookie usually means personalized output. But many
+			// themes/plugins call session_start() on every page and emit a
+			// fresh, content-irrelevant PHPSESSID even for anonymous
+			// visitors — refusing those would disable caching site-wide.
+			// So only a cookie that actually marks a logged-in / cart /
+			// comment state blocks caching; benign ones are ignored (and
+			// stripped from the stored headers so they are never replayed).
+			if ( 0 === stripos( $header, 'Set-Cookie:' ) && $this->set_cookie_is_personal( $header ) ) {
 				return $this->reject( 'set-cookie' );
 			}
-			if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/private|no-store|no-cache/i', $header ) ) {
-				return $this->reject( 'cache-control' );
+		}
+
+		// PHP's session_start() sprays "Cache-Control: no-store, no-cache"
+		// + a hardcoded 1981 Expires on EVERY page when any plugin opens a
+		// session. That boilerplate says nothing about the content and
+		// honoring it disables caching site-wide, so it is ignored. A
+		// deliberate private/no-store (without the 1981 signature) is
+		// still honored — as is DONOTCACHEPAGE, the real opt-out.
+		$php_session_boilerplate = false;
+		foreach ( headers_list() as $header ) {
+			if ( 0 === stripos( $header, 'Expires:' ) && false !== strpos( $header, '1981' ) ) {
+				$php_session_boilerplate = true;
+				break;
+			}
+		}
+		if ( ! $php_session_boilerplate ) {
+			foreach ( headers_list() as $header ) {
+				if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/\b(?:private|no-store)\b/i', $header ) ) {
+					return $this->reject( 'cache-control' );
+				}
 			}
 		}
 
@@ -147,6 +169,30 @@ class Gate {
 		$this->reject_reason = $reason;
 
 		return false;
+	}
+
+	/**
+	 * True only when a Set-Cookie header carries a cookie that marks
+	 * personalized state (login, cart, comment author, EDD, sessions with
+	 * a real value). A bare session cookie set by session_start() with an
+	 * empty or brand-new value is treated as benign.
+	 */
+	private function set_cookie_is_personal( $header ) {
+		$value = trim( substr( $header, strlen( 'Set-Cookie:' ) ) );
+		$name  = strtolower( trim( strtok( $value, '=' ) ) );
+
+		$personal_prefixes = array_map( 'strtolower', array_merge(
+			[ 'wordpress_logged_in_', 'wordpress_sec_', 'comment_author_', 'wp-postpass_', 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'wp_woocommerce_session_', 'edd_items_in_cart', 'edd_cart_token' ],
+			(array) ( $this->config['bypass_cookies'] ?? [] )
+		) );
+
+		foreach ( $personal_prefixes as $prefix ) {
+			if ( '' !== $prefix && 0 === strpos( $name, $prefix ) ) {
+				return true;
+			}
+		}
+
+		return (bool) apply_filters( 'reallycache_set_cookie_is_personal', false, $name, $header );
 	}
 
 	private function has_login_cookie() {
