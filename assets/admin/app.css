@@ -851,6 +851,11 @@
 	padding: 20px;
 }
 
+/* display:grid above would defeat the hidden attribute without this. */
+.rc-modal-overlay[hidden] {
+	display: none;
+}
+
 .rc-modal {
 	background: var(--rc-surface);
 	border: 1px solid var(--rc-border-strong);
