@@ -124,6 +124,8 @@ return [
 		'LCP Boost' => 'האצת LCP',
 		'Font Display Swap' => 'הצגת טקסט מיידית (Font Swap)',
 		'Text shows immediately in a fallback font while webfonts load. Covers inline fonts, Google Fonts and Elementor custom fonts.' => 'הטקסט מוצג מיד בפונט חלופי בזמן שהפונטים נטענים. מכסה פונטים מוטמעים, ‏Google Fonts ופונטים מותאמים של אלמנטור.',
+		'Extract embedded images' => 'חילוץ תמונות מוטמעות',
+		'Huge base64 images inlined in the HTML (e.g. Figma-exported SVGs with photos inside) are extracted to static files, shrinking the page by megabytes and letting WebP compress them' => 'תמונות base64 ענקיות שמוטמעות ב-HTML (למשל SVG מפיגמה עם צילומים בפנים) מחולצות לקבצים סטטיים — העמוד מצטמק במגה-בייטים ו-WebP דוחס אותן',
 		'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win' => 'תמונת ה-hero מקבלת עדיפות טעינה עליונה ו-preload — שיפור ישיר ל-Largest Contentful Paint',
 
 		'Server recommendations' => 'המלצות לשרת',
@@ -136,6 +138,7 @@ return [
 		'Copied to clipboard' => 'הועתק ללוח',
 
 		'Clear page cache' => 'מחיקת קאש דפים',
+		'Purge & warm this page' => 'רענון קאש לעמוד הזה',
 		'Warm cache' => 'חימום קאש',
 		'Clear everything' => 'מחיקת הכול',
 		'The Redis object cache is not active.' => 'קאש ה-Redis לא פעיל.',

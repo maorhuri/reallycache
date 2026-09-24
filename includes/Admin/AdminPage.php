@@ -21,6 +21,7 @@ class AdminPage {
 		add_action( 'admin_menu', [ $this, 'register_menu' ] );
 		add_action( 'admin_bar_menu', [ $this, 'admin_bar' ], 90 );
 		add_action( 'admin_post_reallycache_clear', [ $this, 'handle_clear' ] );
+		add_action( 'admin_post_reallycache_purge_page', [ $this, 'handle_purge_page' ] );
 		add_action( 'admin_post_reallycache_warm', [ $this, 'handle_warm' ] );
 		add_action( 'admin_post_reallycache_redis_flush', [ $this, 'handle_redis_flush' ] );
 		add_action( 'admin_post_reallycache_clear_all', [ $this, 'handle_clear_all' ] );
@@ -80,6 +81,21 @@ class AdminPage {
 			'title' => 'ReallyCache',
 			'href'  => admin_url( 'admin.php?page=reallycache' ),
 		] );
+		// On the frontend: purge exactly the page being viewed and re-warm
+		// it on the spot — perfect for testing one page without a full run.
+		if ( ! is_admin() && ! empty( $_SERVER['REQUEST_URI'] ) ) {
+			$current = home_url( strtok( wp_unslash( $_SERVER['REQUEST_URI'] ), '?' ) );
+			$bar->add_node( [
+				'id'     => 'reallycache-page',
+				'parent' => 'reallycache',
+				'title'  => __( 'Purge & warm this page', 'reallycache' ),
+				'href'   => wp_nonce_url(
+					admin_url( 'admin-post.php?action=reallycache_purge_page&target=' . rawurlencode( $current ) ),
+					'reallycache_purge_page'
+				),
+			] );
+		}
+
 		$bar->add_node( [
 			'id'     => 'reallycache-clear',
 			'parent' => 'reallycache',
@@ -112,6 +128,23 @@ class AdminPage {
 		$this->authorize_action( 'reallycache_clear' );
 		$this->engine->purge_all();
 		$this->back();
+	}
+
+	public function handle_purge_page() {
+		$this->authorize_action( 'reallycache_purge_page' );
+
+		$url  = esc_url_raw( wp_unslash( $_GET['target'] ?? '' ) );
+		$host = strtolower( (string) parse_url( $url, PHP_URL_HOST ) );
+
+		if ( $url && $host === strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) ) ) {
+			$this->engine->purge_url( $url );
+			// Synchronous warm: by the time the redirect lands, the page
+			// is already hot again for the next visitor.
+			Warmer::warm_url( $url, ! empty( $this->engine->config()['separate_mobile'] ) );
+		}
+
+		wp_safe_redirect( $url ?: ( wp_get_referer() ?: home_url( '/' ) ) );
+		exit;
 	}
 
 	public function handle_warm() {
@@ -274,6 +307,8 @@ class AdminPage {
 			'row_lcp_desc'     => __( 'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win', 'reallycache' ),
 			'row_fonts'        => __( 'Font Display Swap', 'reallycache' ),
 			'row_fonts_desc'   => __( 'Text shows immediately in a fallback font while webfonts load. Covers inline fonts, Google Fonts and Elementor custom fonts.', 'reallycache' ),
+			'row_datauri'      => __( 'Extract embedded images', 'reallycache' ),
+			'row_datauri_desc' => __( 'Huge base64 images inlined in the HTML (e.g. Figma-exported SVGs with photos inside) are extracted to static files, shrinking the page by megabytes and letting WebP compress them', 'reallycache' ),
 
 			'btn_server_recs'  => __( 'Server recommendations', 'reallycache' ),
 			'tab_cache'        => __( 'Cache settings', 'reallycache' ),

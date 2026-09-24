@@ -54,6 +54,9 @@ class Config {
 			'webp_on_upload'         => true,
 			'lcp_boost'              => true,
 			'font_display_swap'      => true,
+			// Extract huge base64-inlined images from cached HTML into
+			// static files (the Figma-export-SVG megabyte problem).
+			'datauri_extract'        => true,
 			'browser_cache'          => true,
 			'redis_object_cache'     => false,
 			'redis_excluded_groups'  => [],

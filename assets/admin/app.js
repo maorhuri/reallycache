@@ -265,6 +265,7 @@
 				switchRow( 'webp_on_upload', t( 'row_webp_upload' ), t( 'row_webp_upload_desc' ) ) +
 				switchRow( 'lcp_boost', t( 'row_lcp' ), t( 'row_lcp_desc' ) ) +
 				switchRow( 'font_display_swap', t( 'row_fonts' ), t( 'row_fonts_desc' ) ) +
+				switchRow( 'datauri_extract', t( 'row_datauri' ), t( 'row_datauri_desc' ) ) +
 				'<div class="rc-media-stats">' +
 					webpDonut( w ) +
 					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong><span data-el="webp-libdone">' + esc( formatNumber( w.library_converted ) ) + '</span> / ' + esc( formatNumber( w.library_total ) ) + '</strong></div>' +

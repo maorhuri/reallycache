@@ -40,6 +40,17 @@ delete_option( 'reallycache_webp_dirty' );
 delete_option( 'reallycache_warm_lock' );
 delete_option( 'reallycache_webp_lock' );
 delete_option( 'reallycache_worker_token' );
+delete_option( 'reallycache_datauri_pending' );
+wp_clear_scheduled_hook( 'reallycache_datauri_convert' );
+
+// Extracted data-URI media files.
+$rc_media = wp_get_upload_dir()['basedir'] . '/reallycache-media';
+if ( is_dir( $rc_media ) ) {
+	foreach ( glob( $rc_media . '/*' ) ?: [] as $rc_file ) {
+		@unlink( $rc_file );
+	}
+	@rmdir( $rc_media );
+}
 delete_transient( 'reallycache_webp_estimate' );
 delete_transient( 'reallycache_redis_insights' );
 delete_metadata( 'post', 0, '_reallycache_webp', '', true );
