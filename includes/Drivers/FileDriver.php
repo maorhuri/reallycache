@@ -163,19 +163,32 @@ class FileDriver implements DriverInterface {
 	}
 
 	public function gc( $ttl ) {
-		if ( $ttl <= 0 || ! is_dir( $this->root ) ) {
-			return; // Permanent cache: nothing ever expires by age.
+		if ( ! is_dir( $this->root ) ) {
+			return;
 		}
 
-		$cutoff = time() - $ttl;
-		$it     = new \RecursiveIteratorIterator(
+		$now = time();
+		// Private per-cart entries live 15 minutes; sweep dead ones on
+		// every pass regardless of the site TTL, or a "permanent" cache
+		// would collect one file per cart state forever.
+		$cart_cutoff = $now - max( 10 * MINUTE_IN_SECONDS, (int) apply_filters( 'reallycache_cart_gc', HOUR_IN_SECONDS ) );
+		$cutoff      = $now - $ttl;
+
+		$it = new \RecursiveIteratorIterator(
 			new \RecursiveDirectoryIterator( $this->root, \FilesystemIterator::SKIP_DOTS ),
 			\RecursiveIteratorIterator::CHILD_FIRST
 		);
 
 		foreach ( $it as $item ) {
-			if ( $item->isFile() && $item->getMTime() < $cutoff ) {
-				@unlink( $item->getPathname() );
+			if ( $item->isFile() ) {
+				$name    = $item->getFilename();
+				$is_cart = 0 === strpos( $name, 'index-' ) && false !== strpos( $name, '-c' );
+
+				if ( $is_cart && $item->getMTime() < $cart_cutoff ) {
+					@unlink( $item->getPathname() );
+				} elseif ( $ttl > 0 && $item->getMTime() < $cutoff ) {
+					@unlink( $item->getPathname() );
+				}
 			} elseif ( $item->isDir() ) {
 				@rmdir( $item->getPathname() ); // Only succeeds when empty.
 			}
