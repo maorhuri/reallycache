@@ -90,6 +90,7 @@
 			x: '<path d="M18 6 6 18M6 6l12 12"/>',
 			chat: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5z"/>',
 			flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3 1.1-2.2 2.3-3.3 4-4 0 2 .8 3.4 2 4.5a6.2 6.2 0 0 1 2 4.5 6 6 0 1 1-12 0c0-1 .3-2 .5-2.5.7 1.5 1.3 2.4 2 3z"/>',
+			image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
 			spinner: '<path d="M21 12a9 9 0 1 1-6.2-8.6"/>'
 		};
 		return '<svg class="' + ( cls || '' ) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths[ name ] + '</svg>';
@@ -178,6 +179,73 @@
 		'</div>';
 	}
 
+	function pathOf( url ) {
+		try {
+			var u = new URL( url, window.location.origin );
+			return decodeURIComponent( u.pathname ) || '/';
+		} catch ( e ) {
+			return url || '…';
+		}
+	}
+
+	function warmbarHtml() {
+		var w = state.warm;
+		if ( ! w || ! w.running ) {
+			return '';
+		}
+		var pct = w.total ? Math.round( ( w.done / w.total ) * 100 ) : 0;
+
+		return '<div class="rc-progress-card" data-el="warmbar">' +
+			'<div class="rc-progress-row">' +
+				'<span class="rc-progress-label">' + esc( t( 'warm_now' ) ) + ' <strong data-el="warm-current">' + esc( pathOf( w.current ) ) + '</strong></span>' +
+				'<span class="rc-progress-count" data-el="warm-count">' + w.done + '/' + w.total + '</span>' +
+			'</div>' +
+			'<div class="rc-bar"><div class="rc-bar-fill" data-el="warm-fill" style="width:' + pct + '%"></div></div>' +
+		'</div>';
+	}
+
+	function mediaHtml() {
+		var w = state.webp;
+		if ( ! w ) {
+			return '';
+		}
+
+		var body = '';
+		if ( ! w.supported ) {
+			body = '<div class="rc-row"><div class="rc-row-text"><div class="rc-row-desc">' + esc( t( 'webp_unsupported' ) ) + '</div></div></div>';
+		} else {
+			body = switchRow( 'webp_enabled', t( 'row_webp' ), t( 'row_webp_desc' ) ) +
+				'<div class="rc-media-stats">' +
+					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong data-el="webp-converted">' + esc( formatNumber( w.converted ) ) + '</strong></div>' +
+					'<div class="rc-media-stat">' + esc( t( 'webp_saved' ) ) + '<strong data-el="webp-saved">' + formatBytes( w.saved ) + '</strong></div>' +
+					'<div class="rc-media-stat"' + ( w.pending ? '' : ' hidden' ) + '>' + esc( t( 'webp_pending' ) ) + '<strong data-el="webp-pending">' + esc( formatNumber( w.pending ) ) + '</strong></div>' +
+				'</div>' +
+				'<div class="rc-row" style="border:0">';
+
+			if ( w.running ) {
+				var pct = w.total ? Math.round( ( w.done / w.total ) * 100 ) : 0;
+				body += '<div style="flex:1">' +
+					'<div class="rc-progress-row">' +
+						'<span class="rc-progress-label">' + esc( t( 'webp_now' ) ) + ' <strong data-el="webp-current">' + esc( w.current || '…' ) + '</strong></span>' +
+						'<span class="rc-progress-count" data-el="webp-count">' + w.done + '/' + w.total + '</span>' +
+					'</div>' +
+					'<div class="rc-bar"><div class="rc-bar-fill" data-el="webp-fill" style="width:' + pct + '%"></div></div>' +
+				'</div>';
+			} else {
+				body += '<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="webp-scan">' + icon( 'image' ) + '<span>' + esc( t( 'btn_webp_scan' ) ) + '</span></button>';
+			}
+			body += '</div>';
+		}
+
+		return '<div class="rc-card">' +
+			'<div class="rc-card-head">' + icon( 'image' ) +
+				'<span class="rc-card-title">' + esc( t( 'media_title' ) ) + '</span>' +
+				'<span class="rc-card-desc">' + esc( t( 'media_desc' ) ) + '</span>' +
+			'</div>' +
+			'<div class="rc-card-body">' + body + '</div>' +
+		'</div>';
+	}
+
 	function devHtml() {
 		var actions;
 		if ( state.dev_mode.active ) {
@@ -234,6 +302,12 @@
 				switchRow( 'separate_mobile', t( 'row_mobile' ), t( 'row_mobile_desc' ) ) +
 				switchRow( 'smart_cache', t( 'row_smart' ), t( 'row_smart_desc' ) ) +
 				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
+				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
+				( state.redis && state.redis.available
+					? ( state.redis.foreign
+						? '<div class="rc-row"><div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis' ) ) + '</div><div class="rc-row-desc">' + esc( t( 'redis_foreign' ) ) + '</div></div></div>'
+						: switchRow( 'redis_object_cache', t( 'row_redis' ), t( 'row_redis_desc' ) ) )
+					: '' ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +
 			'</div>' +
@@ -288,9 +362,11 @@
 				'</div>' +
 				'<div class="rc-main">' +
 					bannerHtml() +
+					warmbarHtml() +
 					tilesHtml() +
 					devHtml() +
 					settingsHtml() +
+					mediaHtml() +
 					promoHtml() +
 					'<div class="rc-savebar" data-el="savebar">' +
 						'<span class="rc-savebar-text">' + esc( t( 'save_pending' ) ) + '</span>' +
@@ -309,7 +385,7 @@
 
 		updateSavebar();
 		scheduleDevTick();
-		scheduleWarmPoll();
+		schedulePoll();
 	}
 
 	function warmLabel() {
@@ -351,41 +427,84 @@
 		}, 30000 );
 	}
 
-	// While a warm-up runs, poll for progress. A full re-render would blow
-	// away unsaved edits, so with a dirty form only the labels are patched.
-	var warmPoll = null;
-	function scheduleWarmPoll() {
-		if ( warmPoll ) {
-			clearTimeout( warmPoll );
-			warmPoll = null;
+	// While a warm-up or conversion runs, poll for progress every 2s. Each
+	// poll also pumps the server-side queues. A full re-render would blow
+	// away unsaved edits, so with a dirty form only the live parts are
+	// patched in place.
+	var pollTimer = null;
+
+	function isBusy() {
+		return ( state.warm && state.warm.running ) || ( state.webp && state.webp.running );
+	}
+
+	function schedulePoll() {
+		if ( pollTimer ) {
+			clearTimeout( pollTimer );
+			pollTimer = null;
 		}
-		if ( state && state.warm && state.warm.running ) {
-			warmPoll = setTimeout( pollWarm, 3000 );
+		if ( state && isBusy() ) {
+			pollTimer = setTimeout( pollStatus, 2000 );
 		}
 	}
 
-	function pollWarm() {
+	function setText( name, value ) {
+		var node = el( name );
+		if ( node ) {
+			node.textContent = value;
+		}
+	}
+
+	function setBar( name, done, total ) {
+		var node = el( name );
+		if ( node ) {
+			node.style.width = ( total ? Math.round( ( done / total ) * 100 ) : 0 ) + '%';
+		}
+	}
+
+	function patchProgress() {
+		if ( state.warm ) {
+			setText( 'warm-label', warmLabel() );
+			setText( 'warm-current', pathOf( state.warm.current ) );
+			setText( 'warm-count', state.warm.done + '/' + state.warm.total );
+			setBar( 'warm-fill', state.warm.done, state.warm.total );
+			var bar = el( 'warmbar' );
+			if ( bar && ! state.warm.running ) {
+				bar.hidden = true;
+			}
+		}
+		if ( state.webp ) {
+			setText( 'webp-current', state.webp.current || '…' );
+			setText( 'webp-count', state.webp.done + '/' + state.webp.total );
+			setBar( 'webp-fill', state.webp.done, state.webp.total );
+			setText( 'webp-converted', formatNumber( state.webp.converted ) );
+			setText( 'webp-pending', formatNumber( state.webp.pending ) );
+			var saved = el( 'webp-saved' );
+			if ( saved ) {
+				saved.innerHTML = formatBytes( state.webp.saved );
+			}
+		}
+		var pages = el( 'tile-pages' );
+		if ( pages ) {
+			pages.textContent = formatNumber( state.stats.pages );
+		}
+		var size = el( 'tile-size' );
+		if ( size ) {
+			size.innerHTML = formatBytes( state.stats.size );
+		}
+	}
+
+	function pollStatus() {
 		api( 'state' ).then( function ( payload ) {
 			if ( isDirty() || saving ) {
 				state.warm = payload.warm;
+				state.webp = payload.webp;
 				state.stats = payload.stats;
-				var label = el( 'warm-label' );
-				if ( label ) {
-					label.textContent = warmLabel();
-				}
-				var pages = el( 'tile-pages' );
-				if ( pages ) {
-					pages.textContent = formatNumber( payload.stats.pages );
-				}
-				var size = el( 'tile-size' );
-				if ( size ) {
-					size.innerHTML = formatBytes( payload.stats.size );
-				}
-				scheduleWarmPoll();
+				patchProgress();
+				schedulePoll();
 			} else {
 				applyState( payload );
 			}
-		} ).catch( scheduleWarmPoll );
+		} ).catch( schedulePoll );
 	}
 
 	function toast( message, ok ) {
@@ -458,6 +577,17 @@
 		} );
 	}
 
+	function doWebpScan( btn ) {
+		busyButton( btn, true );
+		api( 'webp-scan', {} ).then( function ( payload ) {
+			applyState( payload );
+			toast( t( 'toast_webp' ), true );
+		} ).catch( function () {
+			busyButton( btn, false );
+			toast( t( 'toast_error' ), false );
+		} );
+	}
+
 	function doDevMode( btn, duration ) {
 		busyButton( btn, true );
 		api( 'dev-mode', { duration: duration } ).then( function ( payload ) {
@@ -499,6 +629,9 @@
 				break;
 			case 'warm':
 				doWarm( target );
+				break;
+			case 'webp-scan':
+				doWebpScan( target );
 				break;
 			case 'dev':
 				doDevMode( target, target.dataset.duration );

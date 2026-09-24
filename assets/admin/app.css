@@ -608,6 +608,94 @@
 	height: 15px;
 }
 
+/* ---- Progress (warm-up / conversion) ---- */
+.rc-progress-card {
+	border: 1px solid rgba(255, 33, 127, 0.28);
+	background: linear-gradient(115deg, var(--rc-accent-tint), transparent 60%), var(--rc-surface);
+	border-radius: var(--rc-radius);
+	padding: 14px 18px;
+}
+
+.rc-progress-row {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	margin-block-end: 9px;
+	font-size: 13px;
+}
+
+.rc-progress-label {
+	color: var(--rc-text-2);
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rc-progress-label strong {
+	color: var(--rc-accent-soft);
+	font-weight: 600;
+	direction: ltr;
+	unicode-bidi: embed;
+}
+
+.rc-progress-count {
+	color: var(--rc-text);
+	font-weight: 650;
+	flex: none;
+}
+
+.rc-bar {
+	height: 6px;
+	border-radius: 999px;
+	background: var(--rc-surface-3);
+	overflow: hidden;
+}
+
+.rc-bar-fill {
+	height: 100%;
+	border-radius: 999px;
+	background: linear-gradient(90deg, var(--rc-accent-mid), var(--rc-accent));
+	transition: width 0.5s ease;
+	min-width: 4px;
+}
+
+.rc-bar-fill.is-indeterminate {
+	width: 30% !important;
+	animation: rc-bar-slide 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes rc-bar-slide {
+	from {
+		margin-inline-start: 0;
+	}
+	to {
+		margin-inline-start: 70%;
+	}
+}
+
+/* ---- Media / WebP card ---- */
+.rc-media-stats {
+	display: flex;
+	gap: 26px;
+	padding: 13px 0 4px;
+	flex-wrap: wrap;
+}
+
+.rc-media-stat {
+	font-size: 12px;
+	color: var(--rc-text-3);
+}
+
+.rc-media-stat strong {
+	display: block;
+	font-size: 17px;
+	font-weight: 650;
+	color: var(--rc-text);
+	margin-block-start: 1px;
+}
+
 /* ---- Footer ---- */
 .rc-footer {
 	display: flex;

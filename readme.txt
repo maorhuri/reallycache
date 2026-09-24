@@ -3,7 +3,7 @@ Contributors: mvn
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: cache, performance, speed, page cache
@@ -37,6 +37,13 @@ Yes, out of the box. Cart, checkout and account pages are never cached, visitors
 Use Development Mode on the ReallyCache screen — it pauses caching for an hour or a day and turns itself back on.
 
 == Changelog ==
+
+= 0.4.0 =
+* Fixed: cache warm-up no longer stalls. The queue now runs on a real background worker (loopback + inline pump from status polling + cron watchdog) instead of relying on WP-Cron timing.
+* Warm-up progress bar: live progress with the URL currently being warmed.
+* WebP conversion: images are converted locally (Imagick/GD — they never leave the server). New uploads convert automatically; one click converts the existing library through a throttled queue, and cached HTML serves the .webp twins. Live stats show images converted and space saved.
+* Browser cache: static assets get year-long immutable expiry headers (automatic .htaccess on Apache; ready-made Nginx snippet in docs/).
+* Redis object cache: when Redis is detected on the server, one toggle installs our object-cache drop-in — per-site key namespacing, fail-open design, no extra plugin needed.
 
 = 0.3.0 =
 * Warm Cache: one click queues the whole site (home, posts, pages, products, archives) and warms it through a throttled background queue — a few pages at a time, never overloading the server.

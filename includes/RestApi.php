@@ -21,6 +21,7 @@ class RestApi {
 			[ 'POST', '/settings', 'save_settings' ],
 			[ 'POST', '/purge', 'purge' ],
 			[ 'POST', '/warm', 'warm' ],
+			[ 'POST', '/webp-scan', 'webp_scan' ],
 			[ 'POST', '/dev-mode', 'dev_mode' ],
 		];
 
@@ -30,6 +31,24 @@ class RestApi {
 				'callback'            => [ $this, $callback ],
 				'permission_callback' => function () {
 					return current_user_can( 'manage_options' );
+				},
+			] );
+		}
+
+		// Worker endpoints: hit by cookie-less loopback requests, so they are
+		// public but demand the stored secret token instead.
+		foreach ( [ '/warm-worker' => [ 'ReallyCache\\Warmer', 'work' ], '/webp-worker' => [ 'ReallyCache\\Media\\Webp', 'work' ] ] as $path => $callback ) {
+			register_rest_route( 'reallycache/v1', $path, [
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => function ( \WP_REST_Request $request ) use ( $callback ) {
+					if ( ! Warmer::verify_token( (string) $request->get_param( 'key' ) ) ) {
+						return new \WP_Error( 'reallycache_forbidden', 'Bad token.', [ 'status' => 403 ] );
+					}
+					ignore_user_abort( true );
+					call_user_func( $callback );
+
+					return rest_ensure_response( [ 'ok' => true ] );
 				},
 			] );
 		}
@@ -46,7 +65,7 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'browser_cache', 'redis_object_cache' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
@@ -64,7 +83,10 @@ class RestApi {
 			}
 		}
 
-		Config::save( $changes );
+		$config = Config::save( $changes );
+
+		BrowserCache::sync( $config );
+		Redis\Manager::sync( $config );
 
 		// Settings shape what is cacheable, so stale entries must go.
 		$this->engine->purge_all();
@@ -80,6 +102,12 @@ class RestApi {
 
 	public function warm() {
 		Warmer::seed_site();
+
+		return rest_ensure_response( $this->state() );
+	}
+
+	public function webp_scan() {
+		Media\Webp::seed_library();
 
 		return rest_ensure_response( $this->state() );
 	}
@@ -103,6 +131,11 @@ class RestApi {
 
 	/** Everything the admin app needs, in one payload. */
 	private function state() {
+		// Status polling doubles as the queue pump: every poll guarantees
+		// the background workers are alive or makes progress inline.
+		Warmer::maybe_pump();
+		Media\Webp::maybe_pump();
+
 		$config = Config::load();
 		$stats  = $this->engine->driver()->stats();
 
@@ -114,6 +147,9 @@ class RestApi {
 				'separate_mobile'      => (bool) $config['separate_mobile'],
 				'smart_cache'            => (bool) $config['smart_cache'],
 				'woocommerce_protection' => (bool) $config['woocommerce_protection'],
+				'webp_enabled'           => (bool) $config['webp_enabled'],
+				'browser_cache'          => (bool) $config['browser_cache'],
+				'redis_object_cache'     => (bool) $config['redis_object_cache'],
 				'excluded_uris'        => array_values( (array) $config['excluded_uris'] ),
 				'excluded_user_agents' => array_values( (array) $config['excluded_user_agents'] ),
 			],
@@ -132,6 +168,8 @@ class RestApi {
 			'dropin'     => file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
 			'woo_active' => class_exists( 'WooCommerce' ),
 			'warm'       => Warmer::status(),
+			'webp'       => Media\Webp::status(),
+			'redis'      => Redis\Manager::status(),
 			'time'       => time(),
 		];
 	}

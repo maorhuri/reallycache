@@ -8,11 +8,12 @@ namespace ReallyCache;
 class Setup {
 
 	public static function activate() {
-		Config::save( [ 'cache_enabled' => true ] );
+		$config = Config::save( [ 'cache_enabled' => true ] );
 
 		copy( REALLYCACHE_DIR . '/advanced-cache.php', WP_CONTENT_DIR . '/advanced-cache.php' );
 
 		self::set_wp_cache_constant( true );
+		BrowserCache::sync( $config );
 
 		if ( ! wp_next_scheduled( 'reallycache_gc' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'hourly', 'reallycache_gc' );
@@ -30,6 +31,9 @@ class Setup {
 		self::set_wp_cache_constant( false );
 		wp_clear_scheduled_hook( 'reallycache_gc' );
 		Warmer::reset();
+		Media\Webp::reset();
+		BrowserCache::remove();
+		Redis\Manager::disable();
 
 		$engine = Engine::instance();
 		if ( $engine ) {

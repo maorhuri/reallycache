@@ -29,5 +29,26 @@ if ( is_file( $dropin ) && false !== strpos( (string) file_get_contents( $dropin
 
 wp_clear_scheduled_hook( 'reallycache_gc' );
 wp_clear_scheduled_hook( 'reallycache_warm_tick' );
+wp_clear_scheduled_hook( 'reallycache_webp_tick' );
 delete_option( 'reallycache_warm_queue' );
 delete_option( 'reallycache_warm_state' );
+delete_option( 'reallycache_webp_queue' );
+delete_option( 'reallycache_webp_state' );
+delete_option( 'reallycache_webp_totals' );
+delete_option( 'reallycache_worker_token' );
+
+// Our Redis object-cache drop-in, if it is ours.
+$object_cache = WP_CONTENT_DIR . '/object-cache.php';
+if ( is_file( $object_cache ) && false !== strpos( (string) file_get_contents( $object_cache ), 'ReallyCache' ) ) {
+	unlink( $object_cache );
+}
+
+// Strip the browser-cache block from .htaccess without wp-admin helpers.
+$htaccess = ABSPATH . '.htaccess';
+if ( is_file( $htaccess ) && is_writable( $htaccess ) ) {
+	$contents = (string) file_get_contents( $htaccess );
+	$stripped = preg_replace( '/# BEGIN ReallyCache Browser Cache.*?# END ReallyCache Browser Cache\n?/s', '', $contents );
+	if ( null !== $stripped && $stripped !== $contents ) {
+		file_put_contents( $htaccess, $stripped );
+	}
+}

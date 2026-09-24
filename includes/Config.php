@@ -43,6 +43,10 @@ class Config {
 			// from WooCommerce's page settings so the pre-WP gate knows them.
 			'woocommerce_protection' => true,
 			'woo_excluded_paths'     => [],
+			// v0.4 delivery pack.
+			'webp_enabled'           => true,
+			'browser_cache'          => true,
+			'redis_object_cache'     => false,
 			// One pattern per entry, * is a wildcard. Matched against the URI path.
 			'excluded_uris'         => [],
 			'excluded_user_agents'  => [],

@@ -2,24 +2,30 @@
 namespace ReallyCache;
 
 /**
- * Background cache warmer. Everything goes through a queue processed in
- * small batches over WP-Cron, so warming never stampedes the server:
- * a few blocking requests per tick, a pause, then the next tick.
+ * Background cache warmer with a real worker loop.
  *
- * Two entry points:
- *  - seed_site(): full warm-up (home, posts, pages, products, archives).
- *  - enqueue(): targeted re-warm of URLs that were just purged (smart cache).
+ * WP-Cron alone is unreliable for this (it only fires future events when
+ * traffic happens to arrive), so the queue is pumped three ways:
+ *  1. A loopback worker request that processes batches for ~20s, then
+ *     re-fires itself while the queue is non-empty.
+ *  2. The admin app's status polling: if the worker looks dead, each poll
+ *     processes a small batch inline, so progress is visible regardless.
+ *  3. A cron watchdog every minute as the last resort.
+ *
+ * Pacing is built in: small batches, blocking fetches (the warmer can never
+ * outrun the server rendering pages) and a pause between URLs.
  */
 class Warmer {
 
 	const QUEUE_OPTION = 'reallycache_warm_queue';
 	const STATE_OPTION = 'reallycache_warm_state';
+	const TOKEN_OPTION = 'reallycache_worker_token';
 	const TICK_HOOK    = 'reallycache_warm_tick';
+	const LOCK         = 'reallycache_warm_lock';
 
 	/** Queue a full-site warm-up and start processing. */
 	public static function seed_site() {
-		$urls   = [ home_url( '/' ) ];
-		$config = Config::load();
+		$urls = [ home_url( '/' ) ];
 
 		$types = array_filter( get_post_types( [ 'public' => true ] ), 'is_post_type_viewable' );
 		$ids   = get_posts( [
@@ -45,11 +51,11 @@ class Warmer {
 			}
 		}
 
-		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'updated' => time() ], false );
+		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => time() ], false );
 		self::enqueue( $urls );
 	}
 
-	/** Add URLs to the queue (deduped) and make sure a tick is scheduled. */
+	/** Add URLs to the queue (deduped) and make sure processing runs. */
 	public static function enqueue( array $urls ) {
 		$urls = array_values( array_unique( array_filter( $urls ) ) );
 		if ( empty( $urls ) ) {
@@ -61,34 +67,105 @@ class Warmer {
 		update_option( self::QUEUE_OPTION, $queue, false );
 
 		$state          = self::state();
-		$state['total'] = $state['done'] + count( $queue );
+		$state['total'] = (int) $state['done'] + count( $queue );
 		update_option( self::STATE_OPTION, $state, false );
 
 		self::kick();
 	}
 
-	/** Process one small batch, then schedule the next tick. */
-	public static function tick() {
+	/** Fire the background worker and arm the cron watchdog. */
+	public static function kick() {
+		if ( ! wp_next_scheduled( self::TICK_HOOK ) ) {
+			wp_schedule_single_event( time() + 60, self::TICK_HOOK );
+		}
+
+		wp_remote_post( rest_url( 'reallycache/v1/warm-worker' ), [
+			'blocking'  => false,
+			'timeout'   => 0.02,
+			'sslverify' => false,
+			'body'      => [ 'key' => self::token() ],
+		] );
+	}
+
+	/**
+	 * The worker: processes the queue for up to ~20 seconds under a lock,
+	 * then re-fires itself if work remains.
+	 */
+	public static function work() {
+		if ( get_transient( self::LOCK ) ) {
+			return;
+		}
+		set_transient( self::LOCK, 1, 90 );
+
+		$started = time();
+		while ( ( time() - $started ) < 20 ) {
+			if ( ! self::step( (int) apply_filters( 'reallycache_warm_batch', 3 ) ) ) {
+				break;
+			}
+			usleep( 250000 );
+		}
+
+		delete_transient( self::LOCK );
+
+		if ( self::queued() > 0 ) {
+			self::kick();
+		}
+	}
+
+	/**
+	 * Warm up to $count URLs from the queue. Returns false when it's empty.
+	 * Also called inline from status polling when the worker looks dead.
+	 */
+	public static function step( $count ) {
 		$queue = (array) get_option( self::QUEUE_OPTION, [] );
 		if ( empty( $queue ) ) {
+			return false;
+		}
+
+		$batch = array_splice( $queue, 0, max( 1, $count ) );
+		update_option( self::QUEUE_OPTION, $queue, false );
+
+		$config = Config::load();
+		foreach ( $batch as $url ) {
+			$state            = self::state();
+			$state['current'] = (string) $url;
+			$state['updated'] = time();
+			update_option( self::STATE_OPTION, $state, false );
+
+			self::warm_url( $url, ! empty( $config['separate_mobile'] ) );
+
+			$state            = self::state();
+			$state['done']   += 1;
+			$state['updated'] = time();
+			update_option( self::STATE_OPTION, $state, false );
+		}
+
+		return true;
+	}
+
+	/** Called on every /state poll: keeps the queue moving no matter what. */
+	public static function maybe_pump() {
+		if ( self::queued() < 1 || get_transient( self::LOCK ) ) {
 			return;
 		}
 
-		$config = Config::load();
-		$batch  = array_splice( $queue, 0, max( 1, (int) apply_filters( 'reallycache_warm_batch', 3 ) ) );
-		update_option( self::QUEUE_OPTION, $queue, false );
-
-		foreach ( $batch as $url ) {
-			self::warm_url( $url, ! empty( $config['separate_mobile'] ) );
+		$stale = time() - (int) self::state()['updated'];
+		if ( $stale >= 15 ) {
+			// The loopback worker looks dead (blocked on this host?) —
+			// make progress inside this request so the UI always moves.
+			self::step( 2 );
+		} elseif ( $stale >= 6 ) {
+			self::kick();
 		}
+	}
 
-		$state            = self::state();
-		$state['done']   += count( $batch );
-		$state['updated'] = time();
-		update_option( self::STATE_OPTION, $state, false );
-
-		if ( ! empty( $queue ) ) {
-			self::kick( (int) apply_filters( 'reallycache_warm_pause', 2 ) );
+	/** Cron watchdog: the last-resort pump. */
+	public static function tick() {
+		if ( self::queued() > 0 ) {
+			if ( ! get_transient( self::LOCK ) ) {
+				self::kick();
+			}
+			wp_schedule_single_event( time() + 60, self::TICK_HOOK );
 		}
 	}
 
@@ -112,15 +189,16 @@ class Warmer {
 		}
 	}
 
-	/** @return array{done:int,total:int,queued:int,running:bool} */
+	/** @return array{done:int,total:int,queued:int,running:bool,current:string} */
 	public static function status() {
 		$state  = self::state();
-		$queued = count( (array) get_option( self::QUEUE_OPTION, [] ) );
+		$queued = self::queued();
 
 		return [
 			'done'    => (int) $state['done'],
 			'total'   => (int) $state['total'],
 			'queued'  => $queued,
+			'current' => (string) $state['current'],
 			'running' => $queued > 0,
 		];
 	}
@@ -128,21 +206,32 @@ class Warmer {
 	public static function reset() {
 		delete_option( self::QUEUE_OPTION );
 		delete_option( self::STATE_OPTION );
+		delete_transient( self::LOCK );
 		wp_clear_scheduled_hook( self::TICK_HOOK );
+	}
+
+	/** Shared secret for the public worker endpoints (loopbacks carry no cookies). */
+	public static function token() {
+		$token = get_option( self::TOKEN_OPTION );
+		if ( ! is_string( $token ) || strlen( $token ) < 32 ) {
+			$token = wp_generate_password( 48, false, false );
+			update_option( self::TOKEN_OPTION, $token, false );
+		}
+
+		return $token;
+	}
+
+	public static function verify_token( $key ) {
+		return is_string( $key ) && hash_equals( self::token(), $key );
+	}
+
+	private static function queued() {
+		return count( (array) get_option( self::QUEUE_OPTION, [] ) );
 	}
 
 	private static function state() {
 		$state = get_option( self::STATE_OPTION, [] );
 
-		return wp_parse_args( is_array( $state ) ? $state : [], [ 'done' => 0, 'total' => 0, 'updated' => 0 ] );
-	}
-
-	private static function kick( $delay = 1 ) {
-		if ( ! wp_next_scheduled( self::TICK_HOOK ) ) {
-			wp_schedule_single_event( time() + $delay, self::TICK_HOOK );
-		}
-		if ( function_exists( 'spawn_cron' ) ) {
-			spawn_cron();
-		}
+		return wp_parse_args( is_array( $state ) ? $state : [], [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => 0 ] );
 	}
 }
