@@ -740,6 +740,11 @@
 	font-weight: 650;
 }
 
+.rc-text-danger {
+	color: var(--rc-danger) !important;
+	font-weight: 600;
+}
+
 .rc-banner--slim {
 	padding: 11px 14px;
 	font-size: 12.5px;

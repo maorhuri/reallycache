@@ -18,6 +18,7 @@ class Engine {
 	private $gate;
 	private $driver;
 	private $buffering = false;
+	private $flushed = false;
 
 	public static function boot( array $config, $content_dir ) {
 		if ( ! self::$instance ) {
@@ -76,8 +77,22 @@ class Engine {
 			return;
 		}
 
+		// Tracking-only query strings share the base cache entry, so the
+		// rendered page must never see the parameters (poisoning guard).
+		CacheKey::strip_tracking_from_request( $this->config );
+
 		$this->buffering = true;
-		ob_start( function ( $buffer ) use ( $key ) {
+		ob_start( function ( $buffer, $phase ) use ( $key ) {
+			// A mid-render flush means this callback only holds the tail of
+			// the page; storing it would cache a truncated document.
+			if ( ! ( $phase & PHP_OUTPUT_HANDLER_FINAL ) ) {
+				$this->flushed = true;
+				return $buffer;
+			}
+			if ( $this->flushed ) {
+				return $buffer;
+			}
+
 			return $this->maybe_store( $key, $buffer );
 		} );
 	}
@@ -89,12 +104,57 @@ class Engine {
 		}
 
 		$html = apply_filters( 'reallycache_before_store', $buffer, $key );
+		// A broken optimization filter must never poison the cache: fall
+		// back to the unmodified page when the result is not a full document.
+		if ( ! is_string( $html ) || false === stripos( $html, '</html>' ) ) {
+			$html = $buffer;
+		}
 		$html .= "\n<!-- Cached by ReallyCache on " . gmdate( 'Y-m-d H:i:s' ) . " UTC -->";
 
-		$this->driver->store( $key, $html, (int) $this->config['ttl'] );
+		$this->driver->store( $key, $html, (int) $this->config['ttl'], $this->security_headers() );
 		header( 'X-ReallyCache: MISS' );
 
 		return $html;
+	}
+
+	/**
+	 * Security headers set during render (by security plugins or the theme)
+	 * that must survive onto cache hits, where PHP never runs them again.
+	 */
+	private function security_headers() {
+		$allow = [ 'content-security-policy', 'x-frame-options', 'strict-transport-security', 'referrer-policy', 'x-content-type-options', 'permissions-policy', 'cross-origin-opener-policy' ];
+		$keep  = [];
+
+		foreach ( headers_list() as $header ) {
+			$name = strtolower( trim( strtok( $header, ':' ) ) );
+			if ( in_array( $name, $allow, true ) ) {
+				$keep[] = $header;
+			}
+		}
+
+		return $keep;
+	}
+
+	/**
+	 * True when every variant this site serves is already fresh in cache —
+	 * used by the warmer to skip pages a real visitor already warmed.
+	 */
+	public function url_is_cached( $url ) {
+		$ttl = (int) $this->config['ttl'];
+
+		$desktop = CacheKey::from_url( $url, $this->config );
+		if ( null === $desktop || ! $this->driver->has( $desktop, $ttl ) ) {
+			return false;
+		}
+
+		if ( ! empty( $this->config['separate_mobile'] ) ) {
+			$mobile = CacheKey::from_url( $url, $this->config, '-mobile' );
+			if ( null === $mobile || ! $this->driver->has( $mobile, $ttl ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	public function purge_url( $url, $warm = false ) {

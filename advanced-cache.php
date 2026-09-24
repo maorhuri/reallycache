@@ -20,7 +20,13 @@ if ( ! is_readable( $reallycache_config_file ) ) {
 	return;
 }
 
-$reallycache_config = include $reallycache_config_file;
+// A torn or corrupted config file must degrade to "no caching",
+// never take the site down this early in the load.
+try {
+	$reallycache_config = include $reallycache_config_file;
+} catch ( \Throwable $reallycache_e ) {
+	return;
+}
 if ( ! is_array( $reallycache_config ) || empty( $reallycache_config['cache_enabled'] ) ) {
 	return;
 }

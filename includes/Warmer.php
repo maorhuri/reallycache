@@ -51,6 +51,15 @@ class Warmer {
 			}
 		}
 
+		// Pages a real visitor already warmed are skipped — warming them
+		// again would just overwrite an identical fresh copy for nothing.
+		$engine = \ReallyCache\Engine::instance();
+		if ( $engine ) {
+			$urls = array_values( array_filter( $urls, function ( $url ) use ( $engine ) {
+				return ! $engine->url_is_cached( $url );
+			} ) );
+		}
+
 		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => time() ], false );
 		self::enqueue( $urls );
 	}
@@ -82,9 +91,33 @@ class Warmer {
 		wp_remote_post( rest_url( 'reallycache/v1/warm-worker' ), [
 			'blocking'  => false,
 			'timeout'   => 0.02,
-			'sslverify' => false,
+			'sslverify' => apply_filters( 'https_local_ssl_verify', false ),
 			'body'      => [ 'key' => self::token() ],
 		] );
+	}
+
+	/** Atomic lock via add_option — get/set transients can race. */
+	private static function acquire_lock() {
+		if ( add_option( self::LOCK, (string) time(), '', 'no' ) ) {
+			return true;
+		}
+		$held = (int) get_option( self::LOCK );
+		if ( $held && ( time() - $held ) > 150 ) {
+			update_option( self::LOCK, (string) time(), false );
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function release_lock() {
+		delete_option( self::LOCK );
+	}
+
+	private static function locked() {
+		$held = (int) get_option( self::LOCK );
+
+		return $held && ( time() - $held ) <= 150;
 	}
 
 	/**
@@ -92,10 +125,9 @@ class Warmer {
 	 * then re-fires itself if work remains.
 	 */
 	public static function work() {
-		if ( get_transient( self::LOCK ) ) {
+		if ( ! self::acquire_lock() ) {
 			return;
 		}
-		set_transient( self::LOCK, 1, 90 );
 
 		$started = time();
 		while ( ( time() - $started ) < 20 ) {
@@ -105,7 +137,7 @@ class Warmer {
 			usleep( 250000 );
 		}
 
-		delete_transient( self::LOCK );
+		self::release_lock();
 
 		if ( self::queued() > 0 ) {
 			self::kick();
@@ -126,13 +158,17 @@ class Warmer {
 		update_option( self::QUEUE_OPTION, $queue, false );
 
 		$config = Config::load();
+		$engine = \ReallyCache\Engine::instance();
 		foreach ( $batch as $url ) {
 			$state            = self::state();
 			$state['current'] = (string) $url;
 			$state['updated'] = time();
 			update_option( self::STATE_OPTION, $state, false );
 
-			self::warm_url( $url, ! empty( $config['separate_mobile'] ) );
+			// A visitor may have warmed it since it was queued.
+			if ( ! $engine || ! $engine->url_is_cached( $url ) ) {
+				self::warm_url( $url, ! empty( $config['separate_mobile'] ) );
+			}
 
 			$state            = self::state();
 			$state['done']   += 1;
@@ -145,7 +181,7 @@ class Warmer {
 
 	/** Called on every /state poll: keeps the queue moving no matter what. */
 	public static function maybe_pump() {
-		if ( self::queued() < 1 || get_transient( self::LOCK ) ) {
+		if ( self::queued() < 1 || self::locked() ) {
 			return;
 		}
 
@@ -162,7 +198,7 @@ class Warmer {
 	/** Cron watchdog: the last-resort pump. */
 	public static function tick() {
 		if ( self::queued() > 0 ) {
-			if ( ! get_transient( self::LOCK ) ) {
+			if ( ! self::locked() ) {
 				self::kick();
 			}
 			wp_schedule_single_event( time() + 60, self::TICK_HOOK );
@@ -174,10 +210,18 @@ class Warmer {
 	 * batch so the warmer can never outrun the server rendering the pages.
 	 */
 	public static function warm_url( $url, $mobile_too = false ) {
+		// Same-host only, no redirects: queue URLs pass through filters,
+		// and following a crafted redirect would be blind SSRF.
+		$url_host  = strtolower( (string) parse_url( $url, PHP_URL_HOST ) );
+		$site_host = strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) );
+		if ( '' === $url_host || $url_host !== $site_host ) {
+			return;
+		}
+
 		$args = [
 			'timeout'     => 15,
-			'redirection' => 2,
-			'sslverify'   => false,
+			'redirection' => 0,
+			'sslverify'   => apply_filters( 'https_local_ssl_verify', false ),
 			'headers'     => [ 'Accept-Encoding' => 'gzip', 'X-ReallyCache-Warm' => '1' ],
 			'user-agent'  => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36 ReallyCache-Warmer',
 		];
@@ -217,7 +261,8 @@ class Warmer {
 	public static function reset() {
 		delete_option( self::QUEUE_OPTION );
 		delete_option( self::STATE_OPTION );
-		delete_transient( self::LOCK );
+		delete_option( self::LOCK );
+		delete_option( self::TOKEN_OPTION ); // Rotate the worker token.
 		wp_clear_scheduled_hook( self::TICK_HOOK );
 	}
 

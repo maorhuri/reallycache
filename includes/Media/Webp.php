@@ -78,7 +78,60 @@ class Webp {
 
 		update_option( self::MODE_OPTION, $force ? 'redo' : 'fresh', false );
 		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => time() ], false );
+		delete_transient( 'reallycache_webp_estimate' );
 		self::enqueue( array_map( 'intval', get_posts( $args ) ) );
+	}
+
+	/**
+	 * Disk needed for the twins of everything still unconverted. WebP at
+	 * our quality typically lands at 60–80% of the original, so 75% of the
+	 * pending originals' size is a safe planning figure.
+	 *
+	 * @return array{originals:int,estimate:int,free:int|null}
+	 */
+	public static function disk_estimate() {
+		$bytes = get_transient( 'reallycache_webp_estimate' );
+
+		if ( false === $bytes ) {
+			$bytes = 0;
+			$ids   = get_posts( [
+				'post_type'      => 'attachment',
+				'post_status'    => 'inherit',
+				'post_mime_type' => [ 'image/jpeg', 'image/png' ],
+				'posts_per_page' => 3000,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'meta_query'     => [ [ 'key' => self::META_KEY, 'compare' => 'NOT EXISTS' ] ],
+			] );
+
+			foreach ( $ids as $id ) {
+				$meta = wp_get_attachment_metadata( $id );
+				if ( ! empty( $meta['filesize'] ) ) {
+					$bytes += (int) $meta['filesize'];
+				} else {
+					$file = get_attached_file( $id );
+					if ( $file && is_file( $file ) ) {
+						$bytes += (int) filesize( $file );
+					}
+				}
+				if ( ! empty( $meta['sizes'] ) && is_array( $meta['sizes'] ) ) {
+					foreach ( $meta['sizes'] as $size ) {
+						$bytes += (int) ( $size['filesize'] ?? 0 );
+					}
+				}
+			}
+
+			set_transient( 'reallycache_webp_estimate', $bytes, 10 * MINUTE_IN_SECONDS );
+		}
+
+		$uploads = wp_upload_dir();
+		$free    = ! empty( $uploads['basedir'] ) && function_exists( 'disk_free_space' ) ? @disk_free_space( $uploads['basedir'] ) : null;
+
+		return [
+			'originals' => (int) $bytes,
+			'estimate'  => (int) round( $bytes * 0.75 ),
+			'free'      => null === $free || false === $free ? null : (int) $free,
+		];
 	}
 
 	public static function enqueue( array $ids ) {
@@ -106,16 +159,35 @@ class Webp {
 		wp_remote_post( rest_url( 'reallycache/v1/webp-worker' ), [
 			'blocking'  => false,
 			'timeout'   => 0.02,
-			'sslverify' => false,
+			'sslverify' => apply_filters( 'https_local_ssl_verify', false ),
 			'body'      => [ 'key' => Warmer::token() ],
 		] );
 	}
 
+	/** Atomic lock via add_option — get/set transients can race. */
+	private static function acquire_lock() {
+		if ( add_option( self::LOCK, (string) time(), '', 'no' ) ) {
+			return true;
+		}
+		$held = (int) get_option( self::LOCK );
+		if ( $held && ( time() - $held ) > 150 ) {
+			update_option( self::LOCK, (string) time(), false );
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function locked() {
+		$held = (int) get_option( self::LOCK );
+
+		return $held && ( time() - $held ) <= 150;
+	}
+
 	public static function work() {
-		if ( get_transient( self::LOCK ) ) {
+		if ( ! self::acquire_lock() ) {
 			return;
 		}
-		set_transient( self::LOCK, 1, 120 );
 
 		$started = time();
 		while ( ( time() - $started ) < 20 ) {
@@ -125,7 +197,7 @@ class Webp {
 			usleep( 200000 );
 		}
 
-		delete_transient( self::LOCK );
+		delete_option( self::LOCK );
 
 		if ( self::queued() > 0 ) {
 			self::kick();
@@ -163,7 +235,7 @@ class Webp {
 	}
 
 	public static function maybe_pump() {
-		if ( self::queued() < 1 || get_transient( self::LOCK ) ) {
+		if ( self::queued() < 1 || self::locked() ) {
 			return;
 		}
 
@@ -177,7 +249,7 @@ class Webp {
 
 	public static function tick() {
 		if ( self::queued() > 0 ) {
-			if ( ! get_transient( self::LOCK ) ) {
+			if ( ! self::locked() ) {
 				self::kick();
 			}
 			wp_schedule_single_event( time() + 60, self::TICK_HOOK );
@@ -194,6 +266,16 @@ class Webp {
 	public static function convert_attachment( $attachment_id, $overwrite = false ) {
 		$file = get_attached_file( $attachment_id );
 		if ( ! $file || ! is_file( $file ) ) {
+			update_post_meta( $attachment_id, self::META_KEY, -1 );
+			return 0;
+		}
+
+		// A .webp twin is served without WordPress in the loop, so images
+		// belonging to non-public content (draft/private products, gated
+		// downloads) must not get a publicly fetchable twin.
+		$parent_id = (int) get_post_field( 'post_parent', $attachment_id );
+		$public    = ! $parent_id || 'publish' === get_post_status( $parent_id );
+		if ( ! apply_filters( 'reallycache_webp_allow_attachment', $public, $attachment_id ) ) {
 			update_post_meta( $attachment_id, self::META_KEY, -1 );
 			return 0;
 		}
@@ -238,6 +320,14 @@ class Webp {
 			return 0;
 		}
 
+		// Trust the file content, not the extension: a non-image stored as
+		// .jpg must never reach Imagick's format auto-detection (SVG/MVG/PS
+		// coders are an attack surface — the ImageTragick class).
+		$mime = function_exists( 'wp_get_image_mime' ) ? wp_get_image_mime( $path ) : ( getimagesize( $path )['mime'] ?? false );
+		if ( 'image/jpeg' !== $mime && 'image/png' !== $mime ) {
+			return 0;
+		}
+
 		$webp = $path . '.webp';
 		if ( is_file( $webp ) ) {
 			if ( ! $overwrite ) {
@@ -251,13 +341,20 @@ class Webp {
 
 		try {
 			if ( class_exists( '\Imagick' ) && in_array( 'WEBP', \Imagick::queryFormats( 'WEBP' ), true ) ) {
-				$image = new \Imagick( $path );
+				$image = new \Imagick();
+				// Bounded resources against decompression bombs, and an
+				// explicit coder so only JPEG/PNG decoders ever run.
+				$image->setResourceLimit( \Imagick::RESOURCETYPE_MEMORY, 256 * 1024 * 1024 );
+				$image->setResourceLimit( \Imagick::RESOURCETYPE_MAP, 512 * 1024 * 1024 );
+				$image->setResourceLimit( \Imagick::RESOURCETYPE_WIDTH, 12000 );
+				$image->setResourceLimit( \Imagick::RESOURCETYPE_HEIGHT, 12000 );
+				$image->readImage( ( 'image/png' === $mime ? 'png:' : 'jpeg:' ) . $path );
 				$image->setImageFormat( 'webp' );
 				$image->setImageCompressionQuality( $quality );
 				$done = $image->writeImage( $webp );
 				$image->destroy();
 			} elseif ( function_exists( 'imagewebp' ) ) {
-				$source = preg_match( '/\.png$/i', $path ) ? @imagecreatefrompng( $path ) : @imagecreatefromjpeg( $path );
+				$source = 'image/png' === $mime ? @imagecreatefrompng( $path ) : @imagecreatefromjpeg( $path );
 				if ( $source ) {
 					imagepalettetotruecolor( $source );
 					imagealphablending( $source, false );
@@ -327,8 +424,11 @@ class Webp {
 		$base     = preg_replace( '#^https?:#i', '', rtrim( $uploads['baseurl'], '/' ) );
 		$pattern  = '#(?:https?:)?' . preg_quote( $base, '#' ) . '/[^"\'\s>\)\?]+?\.(?:jpe?g|png)#i';
 		$replaced = preg_replace_callback( $pattern, function ( $match ) use ( $base, $basedir ) {
-			$url  = $match[0];
-			$rel  = preg_replace( '#^(?:https?:)?' . preg_quote( $base, '#' ) . '#i', '', $url );
+			$url = $match[0];
+			$rel = preg_replace( '#^(?:https?:)?' . preg_quote( $base, '#' ) . '#i', '', $url );
+			if ( ! is_string( $rel ) || false !== strpos( $rel, '..' ) ) {
+				return $url; // No filesystem probing outside uploads.
+			}
 			$path = $basedir . $rel;
 
 			return is_file( $path . '.webp' ) ? $url . '.webp' : $url;
@@ -356,10 +456,14 @@ class Webp {
 			self::META_KEY
 		) );
 
+		$disk = ( $library_total > $library_converted ) ? self::disk_estimate() : [ 'estimate' => 0, 'free' => null ];
+
 		return [
 			'supported'         => self::is_supported(),
 			'converted'         => (int) $totals['count'],
 			'saved'             => (int) $totals['saved'],
+			'estimate'          => (int) $disk['estimate'],
+			'disk_free'         => $disk['free'],
 			'library_total'     => $library_total,
 			'library_converted' => min( $library_converted, $library_total ),
 			'done'              => (int) $state['done'],
@@ -376,7 +480,7 @@ class Webp {
 		delete_option( self::STATE_OPTION );
 		delete_option( self::MODE_OPTION );
 		delete_option( self::DIRTY_OPTION );
-		delete_transient( self::LOCK );
+		delete_option( self::LOCK );
 		wp_clear_scheduled_hook( self::TICK_HOOK );
 	}
 

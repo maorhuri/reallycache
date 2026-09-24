@@ -31,7 +31,7 @@ class CacheKey {
 	 */
 	public static function from_request( array $config ) {
 		$host = self::sanitize_host( $_SERVER['HTTP_HOST'] ?? '' );
-		if ( '' === $host ) {
+		if ( '' === $host || ! self::host_allowed( $host, $config ) ) {
 			return null;
 		}
 
@@ -59,8 +59,8 @@ class CacheKey {
 		return new self( $host, $path, $variant );
 	}
 
-	/** @return CacheKey|null Key for an arbitrary URL of this site (purge use). */
-	public static function from_url( $url, array $config ) {
+	/** @return CacheKey|null Key for an arbitrary URL of this site (purge/lookup use). */
+	public static function from_url( $url, array $config, $variant = '' ) {
 		$parts = parse_url( $url );
 		$host  = self::sanitize_host( $parts['host'] ?? '' );
 		$path  = self::sanitize_path( $parts['path'] ?? '/' );
@@ -68,7 +68,7 @@ class CacheKey {
 			return null;
 		}
 
-		return new self( $host, $path, '' );
+		return new self( $host, $path, $variant );
 	}
 
 	/** @return string Directory of this URL, relative to the cache root. */
@@ -88,16 +88,30 @@ class CacheKey {
 	/**
 	 * Only a strictly valid hostname is accepted — HTTP_HOST is client input
 	 * and becomes a directory name, so anything unusual is rejected outright.
+	 * A non-default port makes the request uncacheable rather than being
+	 * stripped: stripping would store a page rendered for host:port under
+	 * the canonical host's key (cache poisoning).
 	 */
 	private static function sanitize_host( $host ) {
 		$host = strtolower( trim( $host ) );
-		$host = preg_replace( '/:\d+$/', '', $host );
 
 		if ( '' === $host || strlen( $host ) > 253 || ! preg_match( '/^[a-z0-9]([a-z0-9\-.]*[a-z0-9])?$/', $host ) || false !== strpos( $host, '..' ) ) {
 			return '';
 		}
 
 		return $host;
+	}
+
+	/**
+	 * Requests for hosts the site does not own are uncacheable. Without
+	 * this, arbitrary Host headers would grow the cache tree without bound
+	 * (entries no purge ever reaches). The list is synced from home_url by
+	 * the plugin; an empty list (fresh config) falls back to allowing.
+	 */
+	private static function host_allowed( $host, array $config ) {
+		$allowed = array_filter( (array) ( $config['allowed_hosts'] ?? [] ) );
+
+		return empty( $allowed ) || in_array( $host, $allowed, true );
 	}
 
 	/**
@@ -112,6 +126,12 @@ class CacheKey {
 		$path = rawurldecode( $path );
 
 		if ( strlen( $path ) > 1024 || false !== strpos( $path, "\0" ) ) {
+			return null;
+		}
+
+		// Doubled slashes would make the normalized key differ from the raw
+		// URI the exclusion rules saw — an exclusion-bypass class. Refuse.
+		if ( false !== strpos( $path, '//' ) ) {
 			return null;
 		}
 
@@ -146,6 +166,31 @@ class CacheKey {
 		}
 
 		return true;
+	}
+
+	/**
+	 * When the query string is tracking-only, remove those parameters from
+	 * the request environment before WordPress parses it. Otherwise a page
+	 * rendered with ?utm_x=<payload> — where themes and plugins reflect the
+	 * current URL into links and forms — would be stored as the base page
+	 * and served to everyone (unkeyed-input cache poisoning).
+	 */
+	public static function strip_tracking_from_request( array $config ) {
+		$uri = $_SERVER['REQUEST_URI'] ?? '/';
+		$pos = strpos( $uri, '?' );
+		if ( false === $pos ) {
+			return;
+		}
+
+		if ( ! self::query_string_is_ignorable( substr( $uri, $pos + 1 ), $config['tracking_params'] ?? [] ) ) {
+			return;
+		}
+
+		foreach ( array_keys( $_GET ) as $name ) {
+			unset( $_GET[ $name ], $_REQUEST[ $name ] );
+		}
+		$_SERVER['REQUEST_URI']  = substr( $uri, 0, $pos );
+		$_SERVER['QUERY_STRING'] = '';
 	}
 
 	private static function is_tracking_param( $name, array $tracking_params ) {

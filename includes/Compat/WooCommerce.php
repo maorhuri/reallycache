@@ -36,6 +36,12 @@ class WooCommerce {
 	 * can exclude them before WordPress loads. Cheap: only writes on change.
 	 */
 	public function sync_excluded_paths() {
+		// admin_init also fires for anonymous admin-ajax traffic, and with
+		// multilingual plugins the permalinks differ per request language —
+		// public traffic must never trigger config writes or path flips.
+		if ( wp_doing_ajax() || wp_doing_cron() || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
 		if ( ! class_exists( 'WooCommerce' ) ) {
 			return;
 		}
@@ -52,9 +58,11 @@ class WooCommerce {
 				$paths[] = rawurldecode( $path );
 			}
 		}
-		$paths = array_values( array_unique( $paths ) );
-
+		// Accumulate rather than replace: with WPML/Polylang each language
+		// has its own slugs, and all of them must stay excluded at once.
 		$config = Config::load();
+		$paths  = array_slice( array_values( array_unique( array_merge( (array) $config['woo_excluded_paths'], $paths ) ) ), 0, 20 );
+
 		if ( $paths !== array_values( (array) $config['woo_excluded_paths'] ) ) {
 			Config::save( [ 'woo_excluded_paths' => $paths ] );
 		}

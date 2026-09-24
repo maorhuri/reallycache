@@ -67,7 +67,7 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'browser_cache', 'redis_object_cache' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection', 'webp_enabled', 'webp_on_upload', 'lcp_boost', 'font_display_swap', 'browser_cache', 'redis_object_cache' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
@@ -92,6 +92,16 @@ class RestApi {
 
 		BrowserCache::sync( $config );
 		Redis\Manager::sync( $config );
+
+		// Elementor keeps generated CSS (including @font-face for custom
+		// fonts) on disk; regenerate it so a font-display change lands.
+		if ( array_key_exists( 'font_display_swap', $changes ) && class_exists( '\Elementor\Plugin' ) ) {
+			try {
+				\Elementor\Plugin::$instance->files_manager->clear_cache();
+			} catch ( \Throwable $e ) {
+				// Elementor internals changed — not fatal.
+			}
+		}
 
 		// Settings shape what is cacheable, so stale entries must go.
 		$this->engine->purge_all();
@@ -172,6 +182,7 @@ class RestApi {
 				'webp_enabled'           => (bool) $config['webp_enabled'],
 				'webp_on_upload'         => (bool) $config['webp_on_upload'],
 				'lcp_boost'              => (bool) $config['lcp_boost'],
+				'font_display_swap'      => (bool) $config['font_display_swap'],
 				'browser_cache'          => (bool) $config['browser_cache'],
 				'redis_object_cache'     => (bool) $config['redis_object_cache'],
 				'redis_excluded_groups'  => array_values( (array) $config['redis_excluded_groups'] ),

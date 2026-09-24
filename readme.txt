@@ -3,7 +3,7 @@ Contributors: mvn
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.5.2
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: cache, performance, speed, page cache
@@ -37,6 +37,12 @@ Yes, out of the box. Cart, checkout and account pages are never cached, visitors
 Use Development Mode on the ReallyCache screen — it pauses caching for an hour or a day and turns itself back on.
 
 == Changelog ==
+
+= 0.6.0 =
+* Security hardening across the board, following a full internal audit: Redis values are now HMAC-signed (a neighbor on shared Redis can no longer plant or forge entries) with an unguessable per-site key prefix; arbitrary Host headers and non-default ports are refused as cache keys; tracking parameters are stripped from the request before WordPress renders (cache-poisoning guard); responses that set cookies or declare Cache-Control private/no-store are never cached; security headers (CSP, HSTS, X-Frame-Options…) are captured at store time and replayed on cache hits; wp-config.php editing is now atomic and only ever touches a plain boolean literal; WebP conversion validates image content before decoding, runs Imagick with an explicit coder and resource limits, and skips images of non-public content; background workers use atomic locks, follow no redirects and only fetch same-host URLs.
+* Font Display Swap (on by default): text renders immediately in a fallback font while webfonts load — inline @font-face, Google Fonts and Elementor custom fonts.
+* Warm-up now skips pages that are already fresh in cache, including ones a visitor warmed while the queue was waiting.
+* WebP: disk-space estimate (with a free-space check and warning) shown before converting the library.
 
 = 0.5.0 =
 * Redis insights: live hit rate, queries served from RAM, key count, Redis memory usage and a breakdown of what lives inside by cache group — plus tuning: excluded groups and a default expiry cap, all applied through our drop-in (v2).

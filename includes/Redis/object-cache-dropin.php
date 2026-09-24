@@ -1,6 +1,6 @@
 <?php
 /**
- * ReallyCache Redis object cache drop-in. Drop-in version: 2
+ * ReallyCache Redis object cache drop-in. Drop-in version: 3
  *
  * Fail-open by design: if Redis is unreachable at any point, the cache
  * degrades to a per-request in-memory cache and the site keeps working.
@@ -131,24 +131,46 @@ class WP_Object_Cache {
 	private $redis_hits = 0;
 	private $redis_misses = 0;
 
+	/** @var string HMAC secret; empty disables persistence (never fail open on auth). */
+	private $secret = '';
+
 	public function __construct() {
 		// Site-owner tuning from the ReallyCache config file.
 		$config_file = WP_CONTENT_DIR . '/reallycache/config.php';
 		if ( is_readable( $config_file ) ) {
-			$reallycache_config_file = $config_file; // Satisfies the config file's access guard.
-			$config                  = include $config_file;
+			try {
+				$reallycache_config_file = $config_file; // Satisfies the config file's access guard.
+				$config                  = include $config_file;
+			} catch ( Throwable $e ) {
+				$config = null;
+			}
 			if ( is_array( $config ) ) {
 				$this->non_persistent = array_values( array_filter( (array) ( $config['redis_excluded_groups'] ?? [] ) ) );
 				$this->max_ttl        = max( 0, (int) ( $config['redis_max_ttl'] ?? 0 ) );
 			}
 		}
 
+		// Values are HMAC-signed before unserialize(): on shared Redis a
+		// neighbor must not be able to plant serialized payloads or forge
+		// entries. The wp-config auth keys are defined by the time the
+		// drop-in loads; without them persistence stays off.
+		if ( defined( 'AUTH_KEY' ) && defined( 'SECURE_AUTH_KEY' ) ) {
+			$this->secret = AUTH_KEY . SECURE_AUTH_KEY;
+		}
+
 		$this->multisite = function_exists( 'is_multisite' ) && is_multisite();
 		$this->blog_id   = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 1;
 
 		global $table_prefix;
-		$db           = defined( 'DB_NAME' ) ? DB_NAME : 'wp';
-		$this->prefix = 'rc:' . substr( md5( $db . '|' . (string) $table_prefix ), 0, 12 ) . ':';
+		$db   = defined( 'DB_NAME' ) ? DB_NAME : 'wp';
+		$salt = ( defined( 'WP_CACHE_KEY_SALT' ) ? WP_CACHE_KEY_SALT : '' ) . $this->secret;
+		// The secret in the prefix makes it unguessable by other tenants
+		// on a shared Redis — they cannot even locate this site's keys.
+		$this->prefix = 'rc:' . substr( md5( $db . '|' . (string) $table_prefix . '|' . $salt ), 0, 16 ) . ':';
+
+		if ( '' === $this->secret ) {
+			return; // No auth keys — run as a per-request memory cache only.
+		}
 
 		try {
 			$host     = defined( 'WP_REDIS_HOST' ) ? WP_REDIS_HOST : '127.0.0.1';
@@ -159,6 +181,9 @@ class WP_Object_Cache {
 
 			$redis = new Redis();
 			$ok    = $path ? $redis->connect( $path ) : $redis->connect( $host, $port, 1.0 );
+			if ( $ok ) {
+				$redis->setOption( Redis::OPT_READ_TIMEOUT, 1.0 );
+			}
 			if ( $ok && $password ) {
 				$ok = $redis->auth( $password );
 			}
@@ -195,7 +220,24 @@ class WP_Object_Cache {
 	private function redis_key( $key, $group ) {
 		$scope = in_array( $group, $this->global_groups, true ) ? 'g' : (string) $this->blog_id;
 
-		return $this->prefix . $scope . ':' . $group . ':' . $key;
+		// Colons are the key-structure separator; neutralize them in the
+		// variable parts so crafted group/key pairs cannot collide.
+		return $this->prefix . $scope . ':' . str_replace( ':', '_', $group ) . ':' . str_replace( ':', '_', (string) $key );
+	}
+
+	private function sign( $raw ) {
+		return hash_hmac( 'sha256', $raw, $this->secret ) . '|' . $raw;
+	}
+
+	/** @return string|false The payload when the signature verifies. */
+	private function verify( $stored ) {
+		if ( ! is_string( $stored ) || strlen( $stored ) < 65 || '|' !== $stored[64] ) {
+			return false;
+		}
+		$mac = substr( $stored, 0, 64 );
+		$raw = substr( $stored, 65 );
+
+		return hash_equals( hash_hmac( 'sha256', $raw, $this->secret ), $mac ) ? $raw : false;
 	}
 
 	private function persistent( $group ) {
@@ -215,7 +257,8 @@ class WP_Object_Cache {
 
 		if ( $this->persistent( $group ) ) {
 			try {
-				$raw = $this->redis->get( $this->redis_key( $key, $group ) );
+				$stored = $this->redis->get( $this->redis_key( $key, $group ) );
+				$raw    = false === $stored ? false : $this->verify( $stored );
 				if ( false !== $raw ) {
 					$value = unserialize( $raw ); // phpcs:ignore
 					$this->cache[ $group ][ $key ] = $value;
@@ -254,7 +297,7 @@ class WP_Object_Cache {
 		if ( $this->persistent( $group ) ) {
 			try {
 				$rkey = $this->redis_key( $key, $group );
-				$raw  = serialize( $data ); // phpcs:ignore
+				$raw  = $this->sign( serialize( $data ) ); // phpcs:ignore
 				if ( $expire < 1 && $this->max_ttl > 0 ) {
 					$expire = $this->max_ttl;
 				}
@@ -349,10 +392,11 @@ class WP_Object_Cache {
 
 		if ( $this->persistent( $group ) ) {
 			try {
+				$pattern_group = addcslashes( str_replace( ':', '_', $group ), '*?[]\\' );
 				foreach ( [ 'g', (string) $this->blog_id ] as $scope ) {
 					$cursor = null;
 					do {
-						$keys = $this->redis->scan( $cursor, $this->prefix . $scope . ':' . $group . ':*', 500 );
+						$keys = $this->redis->scan( $cursor, $this->prefix . $scope . ':' . $pattern_group . ':*', 500 );
 						if ( is_array( $keys ) && $keys ) {
 							$this->redis->unlink( $keys );
 						}

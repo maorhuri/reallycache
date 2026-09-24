@@ -46,7 +46,22 @@ class FileDriver implements DriverInterface {
 		header( 'X-ReallyCache: HIT' );
 		header( 'Age: ' . ( time() - $mtime ) );
 		header( 'Last-Modified: ' . $last_modified );
-		header( 'Vary: Accept-Encoding' );
+		// Mobile gets its own entry, so intermediaries must key on UA too.
+		header( 'Vary: Accept-Encoding' . ( empty( $this->config['separate_mobile'] ) ? '' : ', User-Agent' ) );
+
+		// Replay the security headers captured when the page was stored —
+		// on a hit PHP never runs the code that would send them.
+		$meta = @file_get_contents( $file . '.h.json' );
+		if ( $meta ) {
+			$headers = json_decode( $meta, true );
+			if ( is_array( $headers ) ) {
+				foreach ( $headers as $stored_header ) {
+					if ( is_string( $stored_header ) && ! preg_match( '/[\r\n]/', $stored_header ) ) {
+						header( $stored_header );
+					}
+				}
+			}
+		}
 
 		if ( isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) && trim( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) === $last_modified ) {
 			header( 'HTTP/1.1 304 Not Modified' );
@@ -68,7 +83,7 @@ class FileDriver implements DriverInterface {
 		exit;
 	}
 
-	public function store( CacheKey $key, $html, $ttl ) {
+	public function store( CacheKey $key, $html, $ttl, array $headers = [] ) {
 		$file = $this->path_for( $key );
 		if ( null === $file ) {
 			return;
@@ -77,6 +92,14 @@ class FileDriver implements DriverInterface {
 		$dir = dirname( $file );
 		if ( ! is_dir( $dir ) && ! @mkdir( $dir, 0755, true ) && ! is_dir( $dir ) ) {
 			return;
+		}
+
+		$this->ensure_root_guard();
+
+		if ( $headers ) {
+			@file_put_contents( $file . '.h.json', (string) wp_json_encode( array_values( $headers ) ) );
+		} elseif ( is_file( $file . '.h.json' ) ) {
+			@unlink( $file . '.h.json' );
 		}
 
 		// Atomic publish: a visitor must never read a half-written page.
@@ -96,6 +119,17 @@ class FileDriver implements DriverInterface {
 				@unlink( $tmp );
 			}
 		}
+	}
+
+	public function has( CacheKey $key, $ttl ) {
+		$file = $this->path_for( $key );
+		if ( null === $file || ! is_file( $file ) ) {
+			return false;
+		}
+
+		$mtime = filemtime( $file );
+
+		return $mtime && ( $ttl <= 0 || ( time() - $mtime ) <= $ttl );
 	}
 
 	public function mark_uncacheable() {
@@ -164,6 +198,13 @@ class FileDriver implements DriverInterface {
 		}
 
 		return [ 'pages' => $pages, 'size' => $size ];
+	}
+
+	/** Keeps directory listings of the cache tree from enumerating cached URLs. */
+	private function ensure_root_guard() {
+		if ( ! is_file( $this->root . '/.htaccess' ) ) {
+			@file_put_contents( $this->root . '/.htaccess', "Options -Indexes\n" );
+		}
 	}
 
 	/** @return string|null Absolute file path, guaranteed inside the cache root. */

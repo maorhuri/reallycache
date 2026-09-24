@@ -45,6 +45,17 @@
 		return esc( value >= 100 ? Math.round( value ) : value.toFixed( 1 ) ) + ' <small>' + units[ i ] + '</small>';
 	}
 
+	// Plain-text byte label (formatBytes returns HTML with <small>).
+	function bytesLabel( bytes ) {
+		if ( ! bytes ) {
+			return '0 KB';
+		}
+		var units = [ 'B', 'KB', 'MB', 'GB', 'TB' ];
+		var i     = Math.min( Math.floor( Math.log( bytes ) / Math.log( 1024 ) ), units.length - 1 );
+		var value = bytes / Math.pow( 1024, i );
+		return ( value >= 100 ? Math.round( value ) : value.toFixed( 1 ) ) + ' ' + units[ i ];
+	}
+
 	function formatRemaining( untilTs ) {
 		var mins = Math.max( 1, Math.round( ( untilTs - now() ) / 60 ) );
 		return mins >= 90 ? tf( 'time_h', Math.round( mins / 60 ) ) : tf( 'time_m', mins );
@@ -240,6 +251,7 @@
 			body = switchRow( 'webp_enabled', t( 'row_webp' ), t( 'row_webp_desc' ) ) +
 				switchRow( 'webp_on_upload', t( 'row_webp_upload' ), t( 'row_webp_upload_desc' ) ) +
 				switchRow( 'lcp_boost', t( 'row_lcp' ), t( 'row_lcp_desc' ) ) +
+				switchRow( 'font_display_swap', t( 'row_fonts' ), t( 'row_fonts_desc' ) ) +
 				'<div class="rc-media-stats">' +
 					webpDonut( w ) +
 					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong><span data-el="webp-libdone">' + esc( formatNumber( w.library_converted ) ) + '</span> / ' + esc( formatNumber( w.library_total ) ) + '</strong></div>' +
@@ -252,6 +264,15 @@
 					'<div class="rc-banner-text">' + esc( t( 'webp_stale_note' ) ) + '</div>' +
 					'<button type="button" class="rc-btn rc-btn--primary rc-btn--sm" data-action="purge">' + esc( t( 'btn_clear' ) ) + '</button>' +
 				'</div>';
+			}
+
+			if ( ! w.running && ! allDone && w.estimate > 0 ) {
+				var diskLow  = null !== w.disk_free && w.disk_free < w.estimate * 1.2;
+				var diskNote = tf( 'webp_estimate', bytesLabel( w.estimate ) );
+				if ( null !== w.disk_free ) {
+					diskNote += ' · ' + tf( diskLow ? 'webp_disk_low' : 'webp_disk_free', bytesLabel( w.disk_free ) );
+				}
+				body += '<div class="rc-row-desc' + ( diskLow ? ' rc-text-danger' : '' ) + '" style="padding-block-start:2px">' + esc( diskNote ) + '</div>';
 			}
 
 			body += '<div class="rc-row" style="border:0">';

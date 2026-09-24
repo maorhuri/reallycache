@@ -90,6 +90,15 @@ class Gate {
 			if ( 0 === stripos( $header, 'Content-Type:' ) && false === stripos( $header, 'text/html' ) ) {
 				return false;
 			}
+			// A response that sets a cookie or declares itself private is
+			// personalized — caching it would hand one visitor's session
+			// or state to everyone.
+			if ( 0 === stripos( $header, 'Set-Cookie:' ) ) {
+				return false;
+			}
+			if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/private|no-store|no-cache/i', $header ) ) {
+				return false;
+			}
 		}
 
 		// A page cut off mid-render (timeout, fatal in a late hook) must never

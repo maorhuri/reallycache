@@ -79,6 +79,9 @@ return [
 		'Waiting' => 'ממתינות',
 		'Convert existing images' => 'המרת תמונות קיימות',
 		'Re-convert all images' => 'המרת כל התמונות מחדש',
+		'Converting the rest will use about %s of disk (originals are kept)' => 'המרת היתרה תצרוך בערך %s מהדיסק (המקוריות נשמרות)',
+		'free: %s' => 'פנוי: %s',
+		'only %s free — not enough!' => 'פנוי רק %s — לא מספיק!',
 		'New WebP images were created, but cached pages still serve the old ones — clear the cache to update them.' => 'נוצרו תמונות WebP חדשות, אבל עמודים בקאש עדיין מגישים את הישנות — נקו את הקאש כדי לעדכן אותם.',
 		'Converting:' => 'ממיר עכשיו:',
 		'Image conversion started in the background' => 'המרת התמונות התחילה ברקע',
@@ -105,6 +108,8 @@ return [
 		'Convert on upload' => 'המרה בזמן העלאה',
 		'Every image you upload is converted to WebP automatically in the background' => 'כל תמונה שמעלים מומרת ל-WebP אוטומטית ברקע',
 		'LCP Boost' => 'האצת LCP',
+		'Font Display Swap' => 'הצגת טקסט מיידית (Font Swap)',
+		'Text shows immediately in a fallback font while webfonts load. Covers inline fonts, Google Fonts and Elementor custom fonts.' => 'הטקסט מוצג מיד בפונט חלופי בזמן שהפונטים נטענים. מכסה פונטים מוטמעים, ‏Google Fonts ופונטים מותאמים של אלמנטור.',
 		'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win' => 'תמונת ה-hero מקבלת עדיפות טעינה עליונה ו-preload — שיפור ישיר ל-Largest Contentful Paint',
 
 		'Server recommendations' => 'המלצות לשרת',

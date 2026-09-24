@@ -17,7 +17,8 @@ class ServerDetector {
 	public static function server() {
 		$software = strtolower( $_SERVER['SERVER_SOFTWARE'] ?? '' );
 
-		if ( isset( $_SERVER['X-LSCACHE'] ) || isset( $_SERVER['HTTP_X_LSCACHE'] ) || false !== strpos( $software, 'litespeed' ) ) {
+		// Only server-populated signals — HTTP_* vars are client-controlled.
+		if ( isset( $_SERVER['X-LSCACHE'] ) || false !== strpos( $software, 'litespeed' ) ) {
 			return self::SERVER_LITESPEED;
 		}
 		if ( false !== strpos( $software, 'nginx' ) ) {

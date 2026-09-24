@@ -31,14 +31,18 @@ interface DriverInterface {
 	 * @param CacheKey $key
 	 * @param string   $html
 	 * @param int      $ttl
+	 * @param string[] $headers Security headers to replay on hits.
 	 */
-	public function store( CacheKey $key, $html, $ttl );
+	public function store( CacheKey $key, $html, $ttl, array $headers = [] );
 
 	/**
 	 * Tell the outer cache this response must not be stored. Only matters
 	 * for header-based drivers; called on every uncacheable page view.
 	 */
 	public function mark_uncacheable();
+
+	/** True when a fresh cached copy of this exact key exists. */
+	public function has( CacheKey $key, $ttl );
 
 	/** Purge one URL, all its variants, leaving sub-pages alone. */
 	public function purge_url( $url );

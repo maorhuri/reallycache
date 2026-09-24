@@ -31,7 +31,17 @@ class LcpBoost {
 			return $html;
 		}
 
-		if ( ! preg_match( '/<img\b[^>]*>/i', $html, $match, PREG_OFFSET_CAPTURE, $body_pos ) ) {
+		// Search on a masked copy — same offsets, but scripts and comments
+		// blanked out, so an "<img" inside a JS string or comment is never
+		// picked as the hero (editing there would corrupt the script).
+		$scan = preg_replace_callback( '/<script\b.*?<\/script>|<!--.*?-->/is', function ( $match ) {
+			return str_repeat( ' ', strlen( $match[0] ) );
+		}, $html );
+		if ( ! is_string( $scan ) ) {
+			return $html;
+		}
+
+		if ( ! preg_match( '/<img\b[^>]*>/i', $scan, $match, PREG_OFFSET_CAPTURE, $body_pos ) ) {
 			return $html;
 		}
 
@@ -42,9 +52,9 @@ class LcpBoost {
 			return $html; // Inline placeholder — nothing worth boosting.
 		}
 
-		$boosted = preg_replace( '/\sloading=("|\')?lazy\1?/i', '', $tag );
+		$boosted = preg_replace( '/\sloading=("|\')?lazy\1?/i', '', $tag ) ?? $tag;
 		if ( false === stripos( $boosted, 'fetchpriority' ) ) {
-			$boosted = preg_replace( '/<img\b/i', '<img fetchpriority="high"', $boosted, 1 );
+			$boosted = preg_replace( '/<img\b/i', '<img fetchpriority="high"', $boosted, 1 ) ?? $boosted;
 		}
 
 		$html = substr_replace( $html, $boosted, $offset, strlen( $tag ) );

@@ -47,6 +47,7 @@ class Config {
 			'webp_enabled'           => true,
 			'webp_on_upload'         => true,
 			'lcp_boost'              => true,
+			'font_display_swap'      => true,
 			'browser_cache'          => true,
 			'redis_object_cache'     => false,
 			'redis_excluded_groups'  => [],
@@ -54,6 +55,9 @@ class Config {
 			// One pattern per entry, * is a wildcard. Matched against the URI path.
 			'excluded_uris'         => [],
 			'excluded_user_agents'  => [],
+			// Hosts this site answers for; synced from home_url. Requests
+			// with any other Host header are never cached.
+			'allowed_hosts'         => [],
 		];
 	}
 
@@ -71,7 +75,11 @@ class Config {
 	public static function load() {
 		$saved = [];
 		if ( is_readable( self::config_file() ) ) {
-			$saved = include self::config_file();
+			try {
+				$saved = include self::config_file();
+			} catch ( \Throwable $e ) {
+				$saved = [];
+			}
 			if ( ! is_array( $saved ) ) {
 				$saved = [];
 			}
@@ -97,7 +105,9 @@ class Config {
 
 		$contents = "<?php\nif ( ! defined( 'ABSPATH' ) && php_sapi_name() !== 'cli' && ! isset( \$reallycache_config_file ) ) { exit; }\nreturn " . var_export( $config, true ) . ";\n";
 
-		$tmp = self::config_file() . '.tmp';
+		// Unique temp name: a fixed one let two concurrent writers share an
+		// inode, publishing a half-written file that fatals every request.
+		$tmp = self::config_file() . '.' . uniqid( '', true ) . '.tmp';
 		if ( false !== file_put_contents( $tmp, $contents, LOCK_EX ) ) {
 			rename( $tmp, self::config_file() );
 			if ( function_exists( 'opcache_invalidate' ) ) {

@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.5.2
+	Version: 0.6.0
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.5.2' );
+define( 'REALLYCACHE_VERSION', '0.6.0' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -64,8 +64,24 @@ add_action( 'plugins_loaded', function () {
 	add_action( ReallyCache\Media\Webp::TICK_HOOK, [ 'ReallyCache\\Media\\Webp', 'tick' ] );
 	ReallyCache\Media\Webp::register();
 	ReallyCache\Media\LcpBoost::register();
+	ReallyCache\Media\Fonts::register();
 
 	add_action( 'init', function () {
 		load_plugin_textdomain( 'reallycache', false, dirname( plugin_basename( REALLYCACHE_FILE ) ) . '/languages' );
+	} );
+
+	// Keep the cacheable-host allowlist in sync with the site address, so
+	// the pre-WordPress gate can refuse arbitrary Host headers.
+	add_action( 'admin_init', function () use ( $engine ) {
+		if ( wp_doing_ajax() || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$hosts = array_values( array_unique( array_filter( [
+			strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) ),
+			strtolower( (string) parse_url( site_url(), PHP_URL_HOST ) ),
+		] ) ) );
+		if ( $hosts && $hosts !== array_values( (array) ( $engine->config()['allowed_hosts'] ?? [] ) ) ) {
+			ReallyCache\Config::save( [ 'allowed_hosts' => $hosts ] );
+		}
 	} );
 } );

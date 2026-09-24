@@ -94,9 +94,19 @@ class Manager {
 
 	/** Redeploy our drop-in when the plugin ships a newer version of it. */
 	private static function maybe_refresh_dropin() {
-		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 2' ) ) {
+		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 3' ) ) {
 			copy( REALLYCACHE_DIR . '/includes/Redis/object-cache-dropin.php', self::dropin_path() );
 		}
+	}
+
+	/** Must mirror the drop-in's prefix derivation exactly. */
+	public static function key_prefix() {
+		global $table_prefix;
+		$db     = defined( 'DB_NAME' ) ? DB_NAME : 'wp';
+		$secret = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : '' ) . ( defined( 'SECURE_AUTH_KEY' ) ? SECURE_AUTH_KEY : '' );
+		$salt   = ( defined( 'WP_CACHE_KEY_SALT' ) ? WP_CACHE_KEY_SALT : '' ) . $secret;
+
+		return 'rc:' . substr( md5( $db . '|' . (string) $table_prefix . '|' . $salt ), 0, 16 ) . ':';
 	}
 
 	/**
@@ -124,9 +134,8 @@ class Manager {
 				return null;
 			}
 
-			global $table_prefix;
-			$db     = defined( 'DB_NAME' ) ? DB_NAME : 'wp';
-			$prefix = 'rc:' . substr( md5( $db . '|' . (string) $table_prefix ), 0, 12 ) . ':';
+			$redis->setOption( \Redis::OPT_READ_TIMEOUT, 1.0 );
+			$prefix = self::key_prefix();
 
 			$info   = (array) $redis->info( 'memory' );
 			$hits   = (int) $redis->get( $prefix . 'stats:hits' );

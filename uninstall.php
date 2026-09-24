@@ -35,7 +35,14 @@ delete_option( 'reallycache_warm_state' );
 delete_option( 'reallycache_webp_queue' );
 delete_option( 'reallycache_webp_state' );
 delete_option( 'reallycache_webp_totals' );
+delete_option( 'reallycache_webp_mode' );
+delete_option( 'reallycache_webp_dirty' );
+delete_option( 'reallycache_warm_lock' );
+delete_option( 'reallycache_webp_lock' );
 delete_option( 'reallycache_worker_token' );
+delete_transient( 'reallycache_webp_estimate' );
+delete_transient( 'reallycache_redis_insights' );
+delete_metadata( 'post', 0, '_reallycache_webp', '', true );
 
 // Our Redis object-cache drop-in, if it is ours.
 $object_cache = WP_CONTENT_DIR . '/object-cache.php';

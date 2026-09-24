@@ -54,8 +54,8 @@ class AdminPage {
 			'nonce'   => wp_create_nonce( 'wp_rest' ),
 			'locale'  => str_replace( '_', '-', get_user_locale() ),
 			'brand'   => [
-				'hosting'  => apply_filters( 'reallycache_hosting_url', 'https://mvn.co.il/?utm_source=reallycache&utm_medium=plugin' ),
-				'whatsapp' => apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/97237722100' ),
+				'hosting'  => esc_url_raw( apply_filters( 'reallycache_hosting_url', 'https://mvn.co.il/?utm_source=reallycache&utm_medium=plugin' ) ),
+				'whatsapp' => esc_url_raw( apply_filters( 'reallycache_whatsapp_url', 'https://wa.me/97237722100' ) ),
 			],
 			'server'  => ServerDetector::server(),
 			'snippets' => [
@@ -228,6 +228,9 @@ class AdminPage {
 			'webp_pending'     => __( 'Waiting', 'reallycache' ),
 			'btn_webp_scan'    => __( 'Convert existing images', 'reallycache' ),
 			'btn_webp_rescan'  => __( 'Re-convert all images', 'reallycache' ),
+			'webp_estimate'    => __( 'Converting the rest will use about %s of disk (originals are kept)', 'reallycache' ),
+			'webp_disk_free'   => __( 'free: %s', 'reallycache' ),
+			'webp_disk_low'    => __( 'only %s free — not enough!', 'reallycache' ),
 			'webp_stale_note'  => __( 'New WebP images were created, but cached pages still serve the old ones — clear the cache to update them.', 'reallycache' ),
 			'webp_now'         => __( 'Converting:', 'reallycache' ),
 			'toast_webp'       => __( 'Image conversion started in the background', 'reallycache' ),
@@ -255,6 +258,8 @@ class AdminPage {
 			'row_webp_upload_desc' => __( 'Every image you upload is converted to WebP automatically in the background', 'reallycache' ),
 			'row_lcp'          => __( 'LCP Boost', 'reallycache' ),
 			'row_lcp_desc'     => __( 'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win', 'reallycache' ),
+			'row_fonts'        => __( 'Font Display Swap', 'reallycache' ),
+			'row_fonts_desc'   => __( 'Text shows immediately in a fallback font while webfonts load. Covers inline fonts, Google Fonts and Elementor custom fonts.', 'reallycache' ),
 
 			'btn_server_recs'  => __( 'Server recommendations', 'reallycache' ),
 			'tab_cache'        => __( 'Cache settings', 'reallycache' ),

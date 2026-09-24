@@ -42,42 +42,52 @@ class Setup {
 	}
 
 	/**
-	 * Rewrites the WP_CACHE define in wp-config.php, with a backup and a
-	 * revert if the write produced an empty file.
+	 * Rewrites the WP_CACHE define in wp-config.php. Conservative on
+	 * purpose: only a plain boolean literal is ever replaced — any other
+	 * form (expression, getenv, constant) is left alone rather than risk
+	 * corrupting the file. The write is atomic (temp file + rename), so a
+	 * request dying mid-write can never leave a torn wp-config, and no
+	 * plaintext backup with DB credentials is ever parked in the web root.
 	 */
 	private static function set_wp_cache_constant( $value ) {
 		$path = self::wp_config_path();
-		if ( ! $path || ! is_writable( $path ) ) {
+		if ( ! $path || ! is_writable( $path ) || ! is_writable( dirname( $path ) ) ) {
 			return;
 		}
 
-		copy( $path, $path . '.reallycache-backup' );
+		$original = file_get_contents( $path );
+		if ( false === $original || '' === trim( $original ) ) {
+			return;
+		}
 
-		$contents = file_get_contents( $path );
-		$contents = preg_replace( "/\r\n|\r|\n/", "\n", $contents );
+		$contents = preg_replace( "/\r\n|\r|\n/", "\n", $original );
 		$value    = $value ? 'true' : 'false';
+		$literal  = '/define\s*\(\s*([\'"])WP_CACHE\1\s*,\s*(?:true|false)\s*\)\s*;/';
 
-		if ( preg_match( '/define\s*\(\s*[\'"]WP_CACHE[\'"]/', $contents ) ) {
-			$contents = preg_replace(
-				'/define\s*\(\s*([\'"])WP_CACHE\1\s*,\s*[^)]+\)/',
-				"define( 'WP_CACHE', {$value} )",
-				$contents
-			);
+		if ( preg_match( $literal, $contents ) ) {
+			$contents = preg_replace( $literal, "define( 'WP_CACHE', {$value} );", $contents, 1 );
+		} elseif ( false !== strpos( $contents, 'WP_CACHE' ) ) {
+			return; // Defined in a non-literal way — never touch it.
 		} else {
 			$contents = preg_replace( '/(<\?php)/', "$1\ndefine( 'WP_CACHE', {$value} );", $contents, 1 );
+		}
+
+		if ( ! is_string( $contents ) || '' === trim( $contents ) ) {
+			return;
 		}
 
 		if ( "\n" !== PHP_EOL ) {
 			$contents = str_replace( "\n", PHP_EOL, $contents );
 		}
 
-		file_put_contents( $path, trim( $contents ) );
-
-		if ( filesize( $path ) <= 0 ) {
-			copy( $path . '.reallycache-backup', $path );
+		$tmp = $path . '.' . uniqid( 'rc', true ) . '.tmp';
+		if ( false === file_put_contents( $tmp, trim( $contents ) ) ) {
+			@unlink( $tmp );
+			return;
 		}
-
-		unlink( $path . '.reallycache-backup' );
+		if ( ! rename( $tmp, $path ) ) {
+			@unlink( $tmp );
+		}
 	}
 
 	private static function wp_config_path() {
