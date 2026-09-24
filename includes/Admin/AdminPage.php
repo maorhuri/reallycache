@@ -256,6 +256,7 @@ class AdminPage {
 			'woo_cart_variant' => __( '✓ This theme renders cart data server-side — so each cart state gets its own short-lived private cache entry: correct cart, cached speed', 'reallycache' ),
 			'woo_fragments'    => __( '✓ Cart fragments cached — the slow mini-cart refresh that fires on every page with a cart now returns in milliseconds', 'reallycache' ),
 			'woo_cart_probing' => __( 'Checking whether the theme supports cached pages for visitors with a cart…', 'reallycache' ),
+			'woo_cart_diff'    => __( 'Show what differs with a cart (diagnostic)', 'reallycache' ),
 			'btn_cart_probe'   => __( 'Check now', 'reallycache' ),
 			'row_woo'         => __( 'WooCommerce protection', 'reallycache' ),
 			'row_woo_desc'    => __( 'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache', 'reallycache' ),

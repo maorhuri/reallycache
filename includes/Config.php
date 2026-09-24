@@ -55,6 +55,7 @@ class Config {
 			'cart_cache_ok'          => null,
 			'cart_probe_at'          => 0,
 			'cart_probe_ver'         => 0,
+			'cart_probe_diff'        => '',
 			// When the theme renders cart data server-side, give each cart
 			// state its own short-lived private cache entry instead of
 			// falling back to live pages.

@@ -261,6 +261,7 @@ class RestApi {
 			'woo_cart_cache' => $config['cart_cache_ok'] ?? null,
 			'woo_cart_variant' => ! empty( $config['cart_variant_cache'] ),
 			'woo_fragments'    => ! empty( $config['cart_fragments_cache'] ),
+			'woo_cart_diff'    => (string) ( $config['cart_probe_diff'] ?? '' ),
 			'warm'       => Warmer::status(),
 			'webp'       => Media\Webp::status(),
 			'redis'      => Redis\Manager::status(),

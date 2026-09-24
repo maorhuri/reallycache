@@ -29,7 +29,7 @@ class CartProbe {
 	const HOOK = 'reallycache_cart_probe';
 
 	/** Bumped when the algorithm changes — stale verdicts re-judge themselves. */
-	const ALGO_VERSION = 2;
+	const ALGO_VERSION = 3;
 
 	public static function register() {
 		add_action( self::HOOK, [ __CLASS__, 'run' ] );
@@ -120,7 +120,38 @@ class CartProbe {
 			}
 		}
 
-		self::conclude( self::normalize( $html_a ) === self::normalize( $html_b ), false );
+		$na = self::normalize( $html_a );
+		$nb = self::normalize( $html_b );
+
+		self::conclude( $na === $nb, false, $na === $nb ? '' : self::diff_snippet( $na, $nb ) );
+	}
+
+	/**
+	 * The first differing window between the two normalized renders, with a
+	 * little context — for the settings screen, so a "safe mode" verdict on
+	 * a theme that looks fragments-based can be understood at a glance.
+	 */
+	private static function diff_snippet( $a, $b ) {
+		$la = strlen( $a );
+		$lb = strlen( $b );
+		$min = min( $la, $lb );
+
+		for ( $i = 0; $i < $min && $a[ $i ] === $b[ $i ]; $i ++ ) {
+			// advance to first difference
+		}
+		for ( $j = 0; $j < $min - $i && $a[ $la - 1 - $j ] === $b[ $lb - 1 - $j ]; $j ++ ) {
+			// advance from the end
+		}
+
+		$ctx    = 90;
+		$a_win  = substr( $a, max( 0, $i - $ctx ), ( $la - $j - $i ) + 2 * $ctx );
+		$b_win  = substr( $b, max( 0, $i - $ctx ), ( $lb - $j - $i ) + 2 * $ctx );
+		$squish = function ( $s ) {
+			return trim( preg_replace( '/\s+/', ' ', (string) $s ) );
+		};
+
+		return 'NO CART: …' . mb_substr( $squish( $a_win ), 0, 400 ) . "…\n\n"
+			. 'WITH CART: …' . mb_substr( $squish( $b_win ), 0, 400 ) . '…';
 	}
 
 	/** @return string|null Full HTML, or null when the fetch is unusable. */
@@ -252,10 +283,11 @@ class CartProbe {
 	}
 
 	/** @param bool $retry_soon True re-runs tomorrow instead of next week. */
-	private static function conclude( $ok, $retry_soon ) {
+	private static function conclude( $ok, $retry_soon, $diff = '' ) {
 		Config::save( [
-			'cart_cache_ok' => (bool) $ok,
-			'cart_probe_at' => $retry_soon ? time() - ( WEEK_IN_SECONDS - DAY_IN_SECONDS ) : time(),
+			'cart_cache_ok'   => (bool) $ok,
+			'cart_probe_at'   => $retry_soon ? time() - ( WEEK_IN_SECONDS - DAY_IN_SECONDS ) : time(),
+			'cart_probe_diff' => (string) $diff,
 		] );
 	}
 

@@ -340,6 +340,13 @@
 			html += '<div class="rc-row-desc" style="padding-block-end:10px;color:var(--rc-ok)">' + esc( t( 'woo_fragments' ) ) + '</div>';
 		}
 
+		// When the verdict is "safe mode", show the exact difference that
+		// forced it — so a theme that looks fragments-based can be diagnosed.
+		if ( false === v && state.woo_cart_diff ) {
+			html += '<details class="rc-diff"><summary>' + esc( t( 'woo_cart_diff' ) ) + '</summary>' +
+				'<pre dir="ltr">' + esc( state.woo_cart_diff ) + '</pre></details>';
+		}
+
 		return html;
 	}
 

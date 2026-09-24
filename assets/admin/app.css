@@ -908,6 +908,34 @@
 	font-weight: 600;
 }
 
+.rc-diff {
+	margin-block: 4px 12px;
+	font-size: 12px;
+}
+
+.rc-diff summary {
+	cursor: pointer;
+	color: var(--rc-accent-soft);
+	font-weight: 600;
+}
+
+.rc-diff pre {
+	margin-block-start: 8px;
+	padding: 12px 14px;
+	background: var(--rc-surface-2);
+	border: 1px solid var(--rc-border);
+	border-radius: var(--rc-radius-sm);
+	font-family: SFMono-Regular, Consolas, Menlo, monospace;
+	font-size: 11px;
+	line-height: 1.7;
+	color: var(--rc-text-2);
+	white-space: pre-wrap;
+	word-break: break-word;
+	text-align: left;
+	max-height: 320px;
+	overflow: auto;
+}
+
 .rc-snippet pre {
 	margin: 0;
 	padding: 13px 15px;

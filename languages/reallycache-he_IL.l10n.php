@@ -74,6 +74,7 @@ return [
 		'✓ This theme renders cart data server-side — so each cart state gets its own short-lived private cache entry: correct cart, cached speed' => '✓ התבנית מציגה עגלה בצד השרת — לכן כל מצב-עגלה מקבל עותק קאש פרטי קצר-חיים משלו: עגלה נכונה, מהירות של קאש',
 		'✓ Cart fragments cached — the slow mini-cart refresh that fires on every page with a cart now returns in milliseconds' => '✓ ה-fragments של העגלה נשמרים בקאש — רענון העגלה האיטי שנורה בכל עמוד עם עגלה חוזר עכשיו במילי-שניות',
 		'Checking whether the theme supports cached pages for visitors with a cart…' => 'בודק אם התבנית תומכת בקאש גם לגולשים עם עגלה…',
+		'Show what differs with a cart (diagnostic)' => 'הצג מה שונה כשיש עגלה (אבחון)',
 		'Check now' => 'בדיקה עכשיו',
 		'WooCommerce protection' => 'הגנת WooCommerce',
 		'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache' => 'עמודי העגלה, התשלום והאזור האישי מזוהים אוטומטית מהגדרות ווקומרס ולא נשמרים בקאש, וגולשים עם עגלה תמיד עוקפים את הקאש',
