@@ -17,6 +17,10 @@ use ReallyCache\Config;
  * Short TTL keeps totals honest against coupons/stock, the entry is keyed
  * per visitor (session) so nothing leaks, and any change to the cart makes
  * a new hash → a fresh compute exactly once.
+ *
+ * Storage is a persistent object cache (Redis) when present, otherwise a
+ * small JSON file under the cache tree — so the optimization works on
+ * every server, with or without Redis.
  */
 class CartFragments {
 
@@ -28,12 +32,90 @@ class CartFragments {
 		add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'capture' ], PHP_INT_MAX );
 	}
 
+	/** True when a persistent object cache is available (Redis drop-in). */
+	private static function has_object_cache() {
+		return is_file( WP_CONTENT_DIR . '/object-cache.php' ) && function_exists( 'wp_cache_get' );
+	}
+
+	private static function file_for( $key ) {
+		$dir = WP_CONTENT_DIR . '/cache/reallycache-fragments';
+
+		return $dir . '/' . $key . '.json';
+	}
+
+	/** @return string|false */
+	private static function store_get( $key, $ttl ) {
+		if ( self::has_object_cache() ) {
+			$val = wp_cache_get( $key, self::GROUP );
+
+			return is_string( $val ) && '' !== $val ? $val : false;
+		}
+
+		$file = self::file_for( $key );
+		if ( ! is_file( $file ) ) {
+			return false;
+		}
+		if ( ( time() - (int) filemtime( $file ) ) > $ttl ) {
+			@unlink( $file );
+
+			return false;
+		}
+
+		$val = @file_get_contents( $file );
+
+		return is_string( $val ) && '' !== $val ? $val : false;
+	}
+
+	private static function store_set( $key, $payload, $ttl ) {
+		if ( self::has_object_cache() ) {
+			wp_cache_set( $key, $payload, self::GROUP, $ttl );
+
+			return;
+		}
+
+		$dir = WP_CONTENT_DIR . '/cache/reallycache-fragments';
+		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
+			return;
+		}
+		if ( ! is_file( $dir . '/index.html' ) ) {
+			@file_put_contents( $dir . '/index.html', '' );
+		}
+		if ( ! is_file( $dir . '/.htaccess' ) ) {
+			@file_put_contents( $dir . '/.htaccess', "Deny from all\n" );
+		}
+
+		$tmp = self::file_for( $key ) . '.' . uniqid( '', true ) . '.tmp';
+		if ( false !== @file_put_contents( $tmp, $payload ) ) {
+			@rename( $tmp, self::file_for( $key ) );
+		} else {
+			@unlink( $tmp );
+		}
+	}
+
+	/** Called hourly from GC: drop expired fragment files. */
+	public static function gc() {
+		$dir = WP_CONTENT_DIR . '/cache/reallycache-fragments';
+		if ( ! is_dir( $dir ) ) {
+			return;
+		}
+		$cutoff = time() - max( 300, (int) apply_filters( 'reallycache_fragments_ttl', 300 ) ) * 4;
+		foreach ( glob( $dir . '/*.json' ) ?: [] as $file ) {
+			if ( filemtime( $file ) < $cutoff ) {
+				@unlink( $file );
+			}
+		}
+	}
+
 	private static function enabled() {
 		$config = Config::load();
 
 		return ! empty( $config['cart_fragments_cache'] )
 			&& ! empty( $_COOKIE['woocommerce_cart_hash'] )
 			&& ! self::is_logged_in();
+	}
+
+	private static function ttl() {
+		return max( 30, (int) apply_filters( 'reallycache_fragments_ttl', 300 ) );
 	}
 
 	private static function is_logged_in() {
@@ -46,7 +128,17 @@ class CartFragments {
 		return false;
 	}
 
-	/** Per visitor + cart state, so a stored response is never shared wrongly. */
+	/**
+	 * Per visitor + exact cart state, computed only from request cookies so
+	 * the serve side (WooCommerce not booted) and the capture side agree
+	 * byte-for-byte.
+	 *
+	 * woocommerce_cart_hash is md5( cart contents + get_total() ), so it
+	 * already changes on add, remove, quantity (1→10) and coupon — every
+	 * mutation that alters the mini-cart. items_in_cart (the quantity
+	 * count) is folded in as belt-and-suspenders. Both cookies are present
+	 * and identical on the serve and capture halves of the same request.
+	 */
 	private static function key() {
 		$session = '';
 		foreach ( $_COOKIE as $name => $value ) {
@@ -56,7 +148,10 @@ class CartFragments {
 			}
 		}
 
-		return 'frag_' . md5( $_COOKIE['woocommerce_cart_hash'] . '|' . $session );
+		$state  = (string) ( $_COOKIE['woocommerce_cart_hash'] ?? '' );
+		$state .= '|' . (string) ( $_COOKIE['woocommerce_items_in_cart'] ?? '' );
+
+		return 'frag_' . md5( $session . '|' . $state );
 	}
 
 	/**
@@ -68,8 +163,8 @@ class CartFragments {
 			return;
 		}
 
-		$cached = wp_cache_get( self::key(), self::GROUP );
-		if ( is_string( $cached ) && '' !== $cached ) {
+		$cached = self::store_get( self::key(), self::ttl() );
+		if ( false !== $cached ) {
 			header( 'Content-Type: application/json; charset=' . get_option( 'blog_charset' ) );
 			header( 'X-ReallyCache-Fragments: HIT' );
 			nocache_headers();
@@ -87,14 +182,13 @@ class CartFragments {
 	 */
 	public static function capture( $fragments ) {
 		if ( 'get_refreshed_fragments' === ( $_GET['wc-ajax'] ?? '' ) && self::enabled() && is_array( $fragments ) ) {
-			$hash    = isset( WC()->cart ) ? WC()->cart->get_cart_hash() : '';
+			$hash    = ( function_exists( 'WC' ) && isset( WC()->cart ) ) ? WC()->cart->get_cart_hash() : '';
 			$payload = wp_json_encode( [
 				'fragments' => $fragments,
 				'cart_hash' => $hash,
 			] );
 			if ( is_string( $payload ) ) {
-				$ttl = max( 30, (int) apply_filters( 'reallycache_fragments_ttl', 300 ) );
-				wp_cache_set( self::key(), $payload, self::GROUP, $ttl );
+				self::store_set( self::key(), $payload, self::ttl() );
 			}
 		}
 

@@ -43,6 +43,15 @@ delete_option( 'reallycache_worker_token' );
 delete_option( 'reallycache_datauri_pending' );
 wp_clear_scheduled_hook( 'reallycache_datauri_convert' );
 
+// Cart-fragment cache files.
+$rc_frag = WP_CONTENT_DIR . '/cache/reallycache-fragments';
+if ( is_dir( $rc_frag ) ) {
+	foreach ( glob( $rc_frag . '/*' ) ?: [] as $rc_file ) {
+		@unlink( $rc_file );
+	}
+	@rmdir( $rc_frag );
+}
+
 // Extracted data-URI media files.
 $rc_media = wp_get_upload_dir()['basedir'] . '/reallycache-media';
 if ( is_dir( $rc_media ) ) {

@@ -72,7 +72,7 @@ return [
 		'✓ Theme verified: identical HTML with a cart — visitors with items in their cart get cached pages too' => '✓ התבנית אומתה: ‏HTML זהה גם עם עגלה — גולשים עם פריטים בעגלה מקבלים עמודים מהקאש',
 		'This theme renders cart data server-side, so visitors with items in their cart get live pages (safe mode). Re-checked weekly.' => 'התבנית מציגה נתוני עגלה בצד השרת, ולכן גולשים עם פריטים בעגלה מקבלים עמודים חיים (מצב בטוח). נבדק מחדש אחת לשבוע.',
 		'✓ This theme renders cart data server-side — so each cart state gets its own short-lived private cache entry: correct cart, cached speed' => '✓ התבנית מציגה עגלה בצד השרת — לכן כל מצב-עגלה מקבל עותק קאש פרטי קצר-חיים משלו: עגלה נכונה, מהירות של קאש',
-		'✓ Cart fragments cached in Redis — the slow mini-cart refresh that fires on every page with a cart now returns in milliseconds' => '✓ ה-fragments של העגלה נשמרים ב-Redis — רענון העגלה האיטי שנורה בכל עמוד עם עגלה חוזר עכשיו במילי-שניות',
+		'✓ Cart fragments cached — the slow mini-cart refresh that fires on every page with a cart now returns in milliseconds' => '✓ ה-fragments של העגלה נשמרים בקאש — רענון העגלה האיטי שנורה בכל עמוד עם עגלה חוזר עכשיו במילי-שניות',
 		'Checking whether the theme supports cached pages for visitors with a cart…' => 'בודק אם התבנית תומכת בקאש גם לגולשים עם עגלה…',
 		'Check now' => 'בדיקה עכשיו',
 		'WooCommerce protection' => 'הגנת WooCommerce',

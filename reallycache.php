@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.8.3
+	Version: 0.8.4
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.8.3' );
+define( 'REALLYCACHE_VERSION', '0.8.4' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -59,6 +59,7 @@ add_action( 'plugins_loaded', function () {
 
 	add_action( 'reallycache_gc', function () use ( $engine ) {
 		$engine->driver()->gc( $engine->config()['ttl'] );
+		ReallyCache\Compat\CartFragments::gc();
 	} );
 	add_action( ReallyCache\Warmer::TICK_HOOK, [ 'ReallyCache\\Warmer', 'tick' ] );
 	add_action( ReallyCache\Warmer::DAILY_HOOK, [ 'ReallyCache\\Warmer', 'run_daily' ] );
