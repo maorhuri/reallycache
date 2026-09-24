@@ -55,7 +55,7 @@ class Gate {
 			return false;
 		}
 
-		if ( $this->uri_is_excluded() || $this->user_agent_is_excluded() ) {
+		if ( $this->uri_is_excluded() || $this->woo_uri_is_excluded() || $this->user_agent_is_excluded() ) {
 			return false;
 		}
 
@@ -110,7 +110,7 @@ class Gate {
 			return false;
 		}
 
-		if ( function_exists( 'is_cart' ) && ( is_cart() || is_checkout() || is_account_page() ) ) {
+		if ( ! empty( $this->config['woocommerce_protection'] ) && function_exists( 'is_cart' ) && ( is_cart() || is_checkout() || is_account_page() ) ) {
 			return false;
 		}
 
@@ -138,7 +138,10 @@ class Gate {
 	}
 
 	private function has_bypass_cookie() {
-		$prefixes = $this->config['bypass_cookies'] ?? [];
+		$prefixes = (array) ( $this->config['bypass_cookies'] ?? [] );
+		if ( ! empty( $this->config['woocommerce_protection'] ) ) {
+			$prefixes = array_merge( $prefixes, [ 'woocommerce_items_in_cart', 'woocommerce_cart_hash', 'wp_woocommerce_session_' ] );
+		}
 
 		foreach ( array_keys( $_COOKIE ) as $name ) {
 			foreach ( $prefixes as $prefix ) {
@@ -172,6 +175,29 @@ class Gate {
 			}, explode( '*', '/' . trim( $pattern, '/' ) ) ) );
 
 			if ( @preg_match( "#^{$regex}/?$#u", $uri ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * The cart, checkout and account pages as configured in WooCommerce
+	 * (any slug, any language), synced into the config by Compat\WooCommerce
+	 * so this check works before WordPress loads. Prefix match covers
+	 * checkout endpoints like /checkout/order-pay/.
+	 */
+	private function woo_uri_is_excluded() {
+		if ( empty( $this->config['woocommerce_protection'] ) || empty( $this->config['woo_excluded_paths'] ) ) {
+			return false;
+		}
+
+		$uri = rtrim( rawurldecode( strtok( $_SERVER['REQUEST_URI'] ?? '/', '?' ) ), '/' ) . '/';
+
+		foreach ( (array) $this->config['woo_excluded_paths'] as $path ) {
+			$path = rtrim( (string) $path, '/' ) . '/';
+			if ( '/' !== $path && 0 === strpos( $uri, $path ) ) {
 				return true;
 			}
 		}

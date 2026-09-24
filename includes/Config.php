@@ -16,10 +16,14 @@ class Config {
 			'version'               => REALLYCACHE_VERSION,
 			'plugin_dir'            => REALLYCACHE_DIR,
 			'cache_enabled'         => true,
+			// Seconds a cached page stays fresh; 0 = permanent, purged only
+			// by the smart-cache hooks or a manual clear.
 			'ttl'                   => 43200,
 			'separate_mobile'       => false,
 			'dev_mode_until'        => 0,
-			'purge_home_on_update'  => true,
+			// Smart cache: content changes purge exactly the affected URLs
+			// (page, home, archives) and re-warm them in the background.
+			'smart_cache'           => true,
 			// Query parameters that never change page content. A request whose
 			// entire query string consists of these is served the base page.
 			'tracking_params'       => [
@@ -28,15 +32,17 @@ class Config {
 				'mc_cid', 'mc_eid', '_ga', 'igshid', 'ttclid', 'twclid',
 			],
 			// A visitor carrying any of these cookie name prefixes gets a
-			// personalized page and must bypass the cache.
+			// personalized page and must bypass the cache. WooCommerce's own
+			// cookies are handled by the woocommerce_protection toggle.
 			'bypass_cookies'        => [
 				'wp-postpass_',
 				'comment_author_',
-				'woocommerce_items_in_cart',
-				'woocommerce_cart_hash',
-				'wp_woocommerce_session_',
 				'edd_items_in_cart',
 			],
+			// WooCommerce protection: cart/checkout/account URLs are synced
+			// from WooCommerce's page settings so the pre-WP gate knows them.
+			'woocommerce_protection' => true,
+			'woo_excluded_paths'     => [],
 			// One pattern per entry, * is a wildcard. Matched against the URI path.
 			'excluded_uris'         => [],
 			'excluded_user_agents'  => [],

@@ -89,6 +89,7 @@
 			warn: '<path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
 			x: '<path d="M18 6 6 18M6 6l12 12"/>',
 			chat: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5z"/>',
+			flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3 1.1-2.2 2.3-3.3 4-4 0 2 .8 3.4 2 4.5a6.2 6.2 0 0 1 2 4.5 6 6 0 1 1-12 0c0-1 .3-2 .5-2.5.7 1.5 1.3 2.4 2 3z"/>',
 			spinner: '<path d="M21 12a9 9 0 1 1-6.2-8.6"/>'
 		};
 		return '<svg class="' + ( cls || '' ) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths[ name ] + '</svg>';
@@ -153,7 +154,7 @@
 	}
 
 	function ttlLabel( seconds ) {
-		var map = { 3600: 'ttl_1h', 21600: 'ttl_6h', 43200: 'ttl_12h', 86400: 'ttl_24h', 604800: 'ttl_7d' };
+		var map = { 0: 'ttl_forever', 3600: 'ttl_1h', 21600: 'ttl_6h', 43200: 'ttl_12h', 86400: 'ttl_24h', 604800: 'ttl_7d' };
 		return map[ seconds ] ? t( map[ seconds ] ) : Math.round( seconds / 3600 ) + 'h';
 	}
 
@@ -163,8 +164,8 @@
 		return '<div class="rc-tiles">' +
 			tile( 'activity', t( 'tile_status' ), esc( cacheValue ), tf( 'tile_ttl_sub', ttlLabel( state.settings.ttl ) ) ) +
 			tile( 'server', t( 'tile_server' ), esc( state.server.name ), state.server.tier ) +
-			tile( 'pages', t( 'tile_pages' ), esc( formatNumber( state.stats.pages ) ) ) +
-			tile( 'db', t( 'tile_size' ), formatBytes( state.stats.size ) ) +
+			tile( 'pages', t( 'tile_pages' ), '<span data-el="tile-pages">' + esc( formatNumber( state.stats.pages ) ) + '</span>' ) +
+			tile( 'db', t( 'tile_size' ), '<span data-el="tile-size">' + formatBytes( state.stats.size ) + '</span>' ) +
 		'</div>';
 	}
 
@@ -214,7 +215,7 @@
 	}
 
 	function settingsHtml() {
-		var ttlOptions = [ 3600, 21600, 43200, 86400, 604800 ].map( function ( s ) {
+		var ttlOptions = [ 3600, 21600, 43200, 86400, 604800, 0 ].map( function ( s ) {
 			return '<option value="' + s + '"' + ( model.ttl === s ? ' selected' : '' ) + '>' + esc( ttlLabel( s ) ) + '</option>';
 		} ).join( '' );
 
@@ -231,7 +232,8 @@
 					'<select class="rc-select" data-field="ttl">' + ttlOptions + '</select>' +
 				'</div>' +
 				switchRow( 'separate_mobile', t( 'row_mobile' ), t( 'row_mobile_desc' ) ) +
-				switchRow( 'purge_home_on_update', t( 'row_home' ), t( 'row_home_desc' ) ) +
+				switchRow( 'smart_cache', t( 'row_smart' ), t( 'row_smart_desc' ) ) +
+				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +
 			'</div>' +
@@ -281,6 +283,7 @@
 					'</div>' +
 					'<div class="rc-topbar-spacer"></div>' +
 					'<span data-el="pill">' + statusPill() + '</span>' +
+					'<button type="button" class="rc-btn rc-btn--ghost" data-action="warm"' + ( state.warm && state.warm.running ? ' disabled' : '' ) + '>' + icon( 'flame' ) + '<span data-el="warm-label">' + esc( warmLabel() ) + '</span></button>' +
 					'<button type="button" class="rc-btn rc-btn--ghost" data-action="purge">' + icon( 'trash' ) + '<span>' + esc( t( 'btn_clear' ) ) + '</span></button>' +
 				'</div>' +
 				'<div class="rc-main">' +
@@ -306,6 +309,13 @@
 
 		updateSavebar();
 		scheduleDevTick();
+		scheduleWarmPoll();
+	}
+
+	function warmLabel() {
+		return state.warm && state.warm.running
+			? tf( 'warm_running', state.warm.done + '/' + state.warm.total )
+			: t( 'btn_warm' );
 	}
 
 	/* -------------------------------------------------------- partial updates */
@@ -339,6 +349,43 @@
 				desc.textContent = tf( 'dev_active_desc', formatRemaining( state.dev_mode.until ) );
 			}
 		}, 30000 );
+	}
+
+	// While a warm-up runs, poll for progress. A full re-render would blow
+	// away unsaved edits, so with a dirty form only the labels are patched.
+	var warmPoll = null;
+	function scheduleWarmPoll() {
+		if ( warmPoll ) {
+			clearTimeout( warmPoll );
+			warmPoll = null;
+		}
+		if ( state && state.warm && state.warm.running ) {
+			warmPoll = setTimeout( pollWarm, 3000 );
+		}
+	}
+
+	function pollWarm() {
+		api( 'state' ).then( function ( payload ) {
+			if ( isDirty() || saving ) {
+				state.warm = payload.warm;
+				state.stats = payload.stats;
+				var label = el( 'warm-label' );
+				if ( label ) {
+					label.textContent = warmLabel();
+				}
+				var pages = el( 'tile-pages' );
+				if ( pages ) {
+					pages.textContent = formatNumber( payload.stats.pages );
+				}
+				var size = el( 'tile-size' );
+				if ( size ) {
+					size.innerHTML = formatBytes( payload.stats.size );
+				}
+				scheduleWarmPoll();
+			} else {
+				applyState( payload );
+			}
+		} ).catch( scheduleWarmPoll );
 	}
 
 	function toast( message, ok ) {
@@ -400,6 +447,17 @@
 		} );
 	}
 
+	function doWarm( btn ) {
+		busyButton( btn, true );
+		api( 'warm', {} ).then( function ( payload ) {
+			applyState( payload );
+			toast( t( 'toast_warm' ), true );
+		} ).catch( function () {
+			busyButton( btn, false );
+			toast( t( 'toast_error' ), false );
+		} );
+	}
+
 	function doDevMode( btn, duration ) {
 		busyButton( btn, true );
 		api( 'dev-mode', { duration: duration } ).then( function ( payload ) {
@@ -438,6 +496,9 @@
 		switch ( target.dataset.action ) {
 			case 'purge':
 				doPurge( target );
+				break;
+			case 'warm':
+				doWarm( target );
 				break;
 			case 'dev':
 				doDevMode( target, target.dataset.duration );

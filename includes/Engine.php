@@ -97,14 +97,22 @@ class Engine {
 		return $html;
 	}
 
-	public function purge_url( $url ) {
-		$this->driver->purge_url( $url );
-		do_action( 'reallycache_purged_url', $url );
+	public function purge_url( $url, $warm = false ) {
+		$this->purge_urls( [ $url ], $warm );
 	}
 
-	public function purge_urls( array $urls ) {
-		foreach ( array_unique( array_filter( $urls ) ) as $url ) {
-			$this->purge_url( $url );
+	public function purge_urls( array $urls, $warm = false ) {
+		$urls = array_unique( array_filter( $urls ) );
+
+		foreach ( $urls as $url ) {
+			$this->driver->purge_url( $url );
+			do_action( 'reallycache_purged_url', $url );
+		}
+
+		// Smart cache: what was just purged gets re-warmed in the background,
+		// so the next real visitor still lands on a hot page.
+		if ( $warm && $urls && ! empty( $this->config['smart_cache'] ) && function_exists( 'get_option' ) ) {
+			Warmer::enqueue( $urls );
 		}
 	}
 

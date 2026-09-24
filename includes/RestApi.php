@@ -20,6 +20,7 @@ class RestApi {
 			[ 'GET', '/state', 'get_state' ],
 			[ 'POST', '/settings', 'save_settings' ],
 			[ 'POST', '/purge', 'purge' ],
+			[ 'POST', '/warm', 'warm' ],
 			[ 'POST', '/dev-mode', 'dev_mode' ],
 		];
 
@@ -45,13 +46,14 @@ class RestApi {
 		}
 
 		$changes = [];
-		foreach ( [ 'cache_enabled', 'separate_mobile', 'purge_home_on_update' ] as $flag ) {
+		foreach ( [ 'cache_enabled', 'separate_mobile', 'smart_cache', 'woocommerce_protection' ] as $flag ) {
 			if ( array_key_exists( $flag, $body ) ) {
 				$changes[ $flag ] = (bool) $body[ $flag ];
 			}
 		}
 		if ( array_key_exists( 'ttl', $body ) ) {
-			$changes['ttl'] = max( 600, (int) $body['ttl'] );
+			$ttl            = (int) $body['ttl'];
+			$changes['ttl'] = $ttl <= 0 ? 0 : max( 600, $ttl );
 		}
 		foreach ( [ 'excluded_uris', 'excluded_user_agents' ] as $list ) {
 			if ( array_key_exists( $list, $body ) ) {
@@ -72,6 +74,12 @@ class RestApi {
 
 	public function purge() {
 		$this->engine->purge_all();
+
+		return rest_ensure_response( $this->state() );
+	}
+
+	public function warm() {
+		Warmer::seed_site();
 
 		return rest_ensure_response( $this->state() );
 	}
@@ -104,7 +112,8 @@ class RestApi {
 				'cache_enabled'        => (bool) $config['cache_enabled'],
 				'ttl'                  => (int) $config['ttl'],
 				'separate_mobile'      => (bool) $config['separate_mobile'],
-				'purge_home_on_update' => (bool) $config['purge_home_on_update'],
+				'smart_cache'            => (bool) $config['smart_cache'],
+				'woocommerce_protection' => (bool) $config['woocommerce_protection'],
 				'excluded_uris'        => array_values( (array) $config['excluded_uris'] ),
 				'excluded_user_agents' => array_values( (array) $config['excluded_user_agents'] ),
 			],
@@ -120,8 +129,10 @@ class RestApi {
 				'name' => ServerDetector::label(),
 				'tier' => ServerDetector::best_available_tier(),
 			],
-			'dropin'   => file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
-			'time'     => time(),
+			'dropin'     => file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
+			'woo_active' => class_exists( 'WooCommerce' ),
+			'warm'       => Warmer::status(),
+			'time'       => time(),
 		];
 	}
 }

@@ -28,3 +28,6 @@ if ( is_file( $dropin ) && false !== strpos( (string) file_get_contents( $dropin
 }
 
 wp_clear_scheduled_hook( 'reallycache_gc' );
+wp_clear_scheduled_hook( 'reallycache_warm_tick' );
+delete_option( 'reallycache_warm_queue' );
+delete_option( 'reallycache_warm_state' );

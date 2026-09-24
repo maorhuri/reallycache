@@ -33,7 +33,11 @@ class FileDriver implements DriverInterface {
 		}
 
 		$mtime = filemtime( $file );
-		if ( ! $mtime || ( time() - $mtime ) > $ttl ) {
+		if ( ! $mtime ) {
+			return;
+		}
+		// TTL 0 means permanent: pages live until a purge removes them.
+		if ( $ttl > 0 && ( time() - $mtime ) > $ttl ) {
 			return; // Stale entries are treated as a miss; gc() removes them.
 		}
 
@@ -121,8 +125,8 @@ class FileDriver implements DriverInterface {
 	}
 
 	public function gc( $ttl ) {
-		if ( ! is_dir( $this->root ) ) {
-			return;
+		if ( $ttl <= 0 || ! is_dir( $this->root ) ) {
+			return; // Permanent cache: nothing ever expires by age.
 		}
 
 		$cutoff = time() - $ttl;

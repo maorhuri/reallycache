@@ -29,6 +29,7 @@ class Setup {
 
 		self::set_wp_cache_constant( false );
 		wp_clear_scheduled_hook( 'reallycache_gc' );
+		Warmer::reset();
 
 		$engine = Engine::instance();
 		if ( $engine ) {

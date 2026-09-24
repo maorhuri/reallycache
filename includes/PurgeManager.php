@@ -45,7 +45,7 @@ class PurgeManager {
 			return;
 		}
 
-		$this->engine->purge_urls( $this->urls_for_post( $post ) );
+		$this->engine->purge_urls( $this->urls_for_post( $post ), true );
 	}
 
 	public function on_comment( $comment_id, $approved ) {
@@ -63,7 +63,7 @@ class PurgeManager {
 	public function on_term_change( $term_id, $tt_id, $taxonomy ) {
 		$link = get_term_link( (int) $term_id, $taxonomy );
 		if ( ! is_wp_error( $link ) ) {
-			$this->engine->purge_url( $link );
+			$this->engine->purge_url( $link, true );
 		}
 	}
 
@@ -72,7 +72,7 @@ class PurgeManager {
 		$urls   = [];
 		$urls[] = get_permalink( $post );
 
-		if ( ! empty( $this->engine->config()['purge_home_on_update'] ) ) {
+		if ( ! empty( $this->engine->config()['smart_cache'] ) ) {
 			$urls[] = home_url( '/' );
 
 			$posts_page = (int) get_option( 'page_for_posts' );
@@ -109,7 +109,7 @@ class PurgeManager {
 	private function purge_comment_post( $comment_id ) {
 		$comment = get_comment( $comment_id );
 		if ( $comment && $comment->comment_post_ID ) {
-			$this->engine->purge_url( get_permalink( (int) $comment->comment_post_ID ) );
+			$this->engine->purge_url( get_permalink( (int) $comment->comment_post_ID ), true );
 		}
 	}
 }
