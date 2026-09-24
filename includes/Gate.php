@@ -46,9 +46,10 @@ class Gate {
 			return false;
 		}
 
-		// Never-cache query parameters: per-request tokens and non-idempotent
-		// actions. Serving one visitor's nonce to another is a security bug.
-		foreach ( [ '_wpnonce', 'wc-ajax', 'add-to-cart', 'remove_item', 'removed_item', 'action', 'doing_wp_cron', 'add_to_wishlist', 's' ] as $param ) {
+		// Never-cache query parameters: per-request tokens, non-idempotent
+		// actions, and 'nocache' — the guaranteed debugging escape hatch:
+		// ?nocache on any URL always shows the live site (no serve, no store).
+		foreach ( [ '_wpnonce', 'wc-ajax', 'add-to-cart', 'remove_item', 'removed_item', 'action', 'doing_wp_cron', 'add_to_wishlist', 's', 'nocache' ] as $param ) {
 			if ( isset( $_GET[ $param ] ) ) {
 				return false;
 			}
