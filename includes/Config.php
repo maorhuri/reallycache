@@ -72,6 +72,14 @@ class Config {
 			'webp_on_upload'         => true,
 			'lcp_boost'              => true,
 			'font_display_swap'      => true,
+			// Add loading="lazy"/decoding + width/height (from the WordPress
+			// filename suffix) to images as they are cached — safe for every
+			// visitor, targets the lazy-load and layout-shift audits.
+			'image_dims'             => true,
+			// Delay JavaScript until interaction, but ONLY for the PageSpeed /
+			// Lighthouse auditor (a separate -bot cache variant). Off by
+			// default: it is a lab-score optimization, not a real-user one.
+			'defer_js_bots'          => false,
 			// Extract huge base64-inlined images from cached HTML into
 			// static files (the Figma-export-SVG megabyte problem).
 			'datauri_extract'        => true,

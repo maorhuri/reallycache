@@ -268,7 +268,9 @@
 			body = switchRow( 'webp_enabled', t( 'row_webp' ), t( 'row_webp_desc' ) ) +
 				switchRow( 'webp_on_upload', t( 'row_webp_upload' ), t( 'row_webp_upload_desc' ) ) +
 				switchRow( 'lcp_boost', t( 'row_lcp' ), t( 'row_lcp_desc' ) ) +
+				switchRow( 'image_dims', t( 'row_imgdims' ), t( 'row_imgdims_desc' ) ) +
 				switchRow( 'font_display_swap', t( 'row_fonts' ), t( 'row_fonts_desc' ) ) +
+				switchRow( 'defer_js_bots', t( 'row_deferjs' ), t( 'row_deferjs_desc' ) ) +
 				switchRow( 'datauri_extract', t( 'row_datauri' ), t( 'row_datauri_desc' ) ) +
 				'<div class="rc-media-stats">' +
 					webpDonut( w ) +

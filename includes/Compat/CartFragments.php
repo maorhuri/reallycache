@@ -49,6 +49,7 @@ class CartFragments {
 		foreach ( [
 			'woocommerce_add_to_cart',
 			'woocommerce_cart_item_set_quantity',
+			'woocommerce_after_cart_item_quantity_update', // Drawer +/- steppers.
 			'woocommerce_cart_item_removed',
 			'woocommerce_cart_item_restored',
 			'woocommerce_applied_coupon',

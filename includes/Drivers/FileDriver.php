@@ -48,13 +48,18 @@ class FileDriver implements DriverInterface {
 		}
 
 		$last_modified = gmdate( 'D, d M Y H:i:s', $mtime ) . ' GMT';
-		$is_cart       = false !== strpos( $key->filename(), '-c' );
+		$fname         = $key->filename();
+		$is_cart       = false !== strpos( $fname, '-c' );
+		// The auditor variant carries the JS-defer transform; a CDN that
+		// cached it and served it to humans would break their JavaScript.
+		$is_private    = $is_cart || false !== strpos( $fname, '-bot' );
 
 		header( 'X-ReallyCache: HIT' );
 		header( 'Age: ' . ( time() - $mtime ) );
-		if ( $is_cart ) {
-			// A private per-cart copy: any intermediary (CDN, proxy) that
-			// cached this 200 would hand one visitor's cart page to everyone.
+		if ( $is_private ) {
+			// A private copy (per-cart, or auditor-only): no intermediary
+			// may share it — one visitor's cart, or the stripped audit page,
+			// must never reach everyone.
 			header( 'Cache-Control: private, no-store, must-revalidate' );
 		} else {
 			header( 'Last-Modified: ' . $last_modified );
@@ -70,7 +75,7 @@ class FileDriver implements DriverInterface {
 			}
 		}
 
-		if ( ! $is_cart && isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) && trim( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) === $last_modified ) {
+		if ( ! $is_private && isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) && trim( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) === $last_modified ) {
 			header( 'HTTP/1.1 304 Not Modified' );
 			exit;
 		}

@@ -56,8 +56,27 @@ class CacheKey {
 			$variant = '-mobile';
 		}
 		$variant .= self::cart_variant( $config );
+		$variant .= self::audit_variant( $config );
 
 		return new self( $host, $path, $variant );
+	}
+
+	/**
+	 * A separate cache entry for PageSpeed / Lighthouse auditors, so the
+	 * JS-defer transform (JsDefer) can be applied to their copy alone and
+	 * real visitors keep the untouched page. Runs pre-WordPress in the
+	 * drop-in, so the UA check is self-contained here.
+	 *
+	 * @return string ''|-bot
+	 */
+	public static function audit_variant( array $config ) {
+		if ( empty( $config['defer_js_bots'] ) || empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
+			return '';
+		}
+
+		return preg_match( '/(Chrome-Lighthouse|Google Page Speed|PageSpeed|Lighthouse|GTmetrix|Pingdom|PTST|WebPageTest)/i', (string) $_SERVER['HTTP_USER_AGENT'] )
+			? '-bot'
+			: '';
 	}
 
 	/**
