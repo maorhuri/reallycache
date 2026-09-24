@@ -241,6 +241,7 @@ class RestApi {
 				&& false !== strpos( (string) file_get_contents( WP_CONTENT_DIR . '/advanced-cache.php' ), 'ReallyCache' ),
 			'health'      => $this->health(),
 			'woo_active'  => class_exists( 'WooCommerce' ),
+			'woo_cart_cache' => $config['cart_cache_ok'] ?? null,
 			'warm'       => Warmer::status(),
 			'webp'       => Media\Webp::status(),
 			'redis'      => Redis\Manager::status(),

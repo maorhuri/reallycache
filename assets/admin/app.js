@@ -316,6 +316,14 @@
 		'</div>';
 	}
 
+	function wooCartNote() {
+		var v     = state.woo_cart_cache;
+		var text  = null === v || undefined === v ? t( 'woo_cart_probing' ) : ( v ? t( 'woo_cart_ok' ) : t( 'woo_cart_safe' ) );
+		var style = 'padding-block-end:10px' + ( true === v ? ';color:var(--rc-ok)' : '' );
+
+		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
+	}
+
 	function tabsHtml() {
 		var tabs = [ [ 'cache', t( 'tab_cache' ) ], [ 'media', t( 'media_title' ) ] ];
 		if ( state.redis && ( state.redis.available || state.redis.active ) ) {
@@ -508,7 +516,7 @@
 						} ).join( '' ) +
 					'</select>' +
 				'</div>' +
-				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
+				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) + wooCartNote() : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +

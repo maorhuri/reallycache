@@ -49,6 +49,11 @@ class Config {
 			// from WooCommerce's page settings so the pre-WP gate knows them.
 			'woocommerce_protection' => true,
 			'woo_excluded_paths'     => [],
+			// Cart-compatibility probe verdict: true = the theme's HTML is
+			// identical with a cart (fragments-based), so cart holders get
+			// cached pages too. null/false = safe mode (live pages).
+			'cart_cache_ok'          => null,
+			'cart_probe_at'          => 0,
 			// Delivery pack.
 			'webp_enabled'           => true,
 			'webp_on_upload'         => true,
