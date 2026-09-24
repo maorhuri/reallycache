@@ -91,6 +91,7 @@
 			chat: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5z"/>',
 			flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3 1.1-2.2 2.3-3.3 4-4 0 2 .8 3.4 2 4.5a6.2 6.2 0 0 1 2 4.5 6 6 0 1 1-12 0c0-1 .3-2 .5-2.5.7 1.5 1.3 2.4 2 3z"/>',
 			image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+			bulb: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/>',
 			spinner: '<path d="M21 12a9 9 0 1 1-6.2-8.6"/>'
 		};
 		return '<svg class="' + ( cls || '' ) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + paths[ name ] + '</svg>';
@@ -102,6 +103,11 @@
 	var model = null;   // The settings being edited.
 	var saving = false;
 	var devTimer = null;
+
+	var activeTab = 'cache';
+	try {
+		activeTab = window.localStorage.getItem( 'reallycache-tab' ) || 'cache';
+	} catch ( e ) {}
 
 	function settingsEqual( a, b ) {
 		return JSON.stringify( a ) === JSON.stringify( b );
@@ -162,18 +168,9 @@
 	function tilesHtml() {
 		var cacheValue = state.dev_mode.active ? t( 'value_paused' ) : ( state.settings.cache_enabled ? t( 'value_on' ) : t( 'value_off' ) );
 
-		var serverTile = '<div class="rc-tile">' +
-			'<div class="rc-tile-label">' + icon( 'server' ) + esc( t( 'tile_server' ) ) + '</div>' +
-			'<div class="rc-tile-value">' + esc( state.server.name ) + '</div>' +
-			'<div class="rc-tile-sub">' + esc( state.server.tier ) + '</div>' +
-			( 'nginx' === RC.server
-				? '<button type="button" class="rc-tile-link" data-action="recs-open">' + esc( t( 'btn_server_recs' ) ) + '</button>'
-				: '' ) +
-		'</div>';
-
 		return '<div class="rc-tiles">' +
 			tile( 'activity', t( 'tile_status' ), esc( cacheValue ), tf( 'tile_ttl_sub', ttlLabel( state.settings.ttl ) ) ) +
-			serverTile +
+			tile( 'server', t( 'tile_server' ), esc( state.server.name ), state.server.tier ) +
 			tile( 'pages', t( 'tile_pages' ), '<span data-el="tile-pages">' + esc( formatNumber( state.stats.pages ) ) + '</span>' ) +
 			tile( 'db', t( 'tile_size' ), '<span data-el="tile-size">' + formatBytes( state.stats.size ) + '</span>' ) +
 		'</div>';
@@ -284,14 +281,45 @@
 		'</div>';
 	}
 
+	function tabsHtml() {
+		var tabs = [ [ 'cache', t( 'tab_cache' ) ], [ 'media', t( 'media_title' ) ] ];
+		if ( state.redis && ( state.redis.available || state.redis.active ) ) {
+			tabs.push( [ 'redis', 'Redis' ] );
+		}
+		if ( ! tabs.some( function ( tab ) { return tab[0] === activeTab; } ) ) {
+			activeTab = 'cache';
+		}
+
+		return '<div class="rc-tabs" role="tablist">' + tabs.map( function ( tab ) {
+			return '<button type="button" role="tab" class="rc-tab' + ( tab[0] === activeTab ? ' is-active' : '' ) + '" data-action="tab" data-tab="' + tab[0] + '">' + esc( tab[1] ) + '</button>';
+		} ).join( '' ) + '</div>';
+	}
+
+	function activePanelHtml() {
+		if ( 'media' === activeTab ) {
+			return mediaHtml();
+		}
+		if ( 'redis' === activeTab ) {
+			return redisHtml();
+		}
+
+		return devHtml() + settingsHtml();
+	}
+
 	function redisHtml() {
 		var r = state.redis;
-		if ( ! r || ! r.active ) {
+		if ( ! r || ( ! r.available && ! r.active ) ) {
 			return '';
 		}
 
-		var ins  = r.insights;
-		var body = '';
+		if ( r.foreign ) {
+			return '<div class="rc-card"><div class="rc-card-head">' + icon( 'db' ) +
+				'<span class="rc-card-title">Redis</span></div>' +
+				'<div class="rc-card-body"><div class="rc-row"><div class="rc-row-text"><div class="rc-row-desc">' + esc( t( 'redis_foreign' ) ) + '</div></div></div></div></div>';
+		}
+
+		var ins  = r.active ? r.insights : null;
+		var body = switchRow( 'redis_object_cache', t( 'row_redis' ), t( 'row_redis_desc' ) );
 
 		if ( ins ) {
 			body += '<div class="rc-media-stats">' +
@@ -310,24 +338,26 @@
 			}
 		}
 
-		var ttlOptions = [ 0, 3600, 21600, 86400 ].map( function ( s ) {
-			var label = 0 === s ? t( 'ttl_unlimited' ) : ttlLabel( s );
-			return '<option value="' + s + '"' + ( model.redis_max_ttl === s ? ' selected' : '' ) + '>' + esc( label ) + '</option>';
-		} ).join( '' );
+		if ( r.active ) {
+			var ttlOptions = [ 0, 3600, 21600, 86400 ].map( function ( s ) {
+				var label = 0 === s ? t( 'ttl_unlimited' ) : ttlLabel( s );
+				return '<option value="' + s + '"' + ( model.redis_max_ttl === s ? ' selected' : '' ) + '>' + esc( label ) + '</option>';
+			} ).join( '' );
 
-		body += '<div class="rc-row">' +
-				'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_ttl' ) ) + '</div>' +
-					'<div class="rc-row-desc">' + esc( t( 'row_redis_ttl_desc' ) ) + '</div></div>' +
-				'<select class="rc-select" data-field="redis_max_ttl">' + ttlOptions + '</select>' +
-			'</div>' +
-			'<div class="rc-row rc-row--col">' +
-				'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_groups' ) ) + '</div>' +
-					'<div class="rc-row-desc">' + esc( t( 'row_redis_groups_desc' ) ) + '</div></div>' +
-				'<textarea class="rc-textarea" data-field="redis_excluded_groups" spellcheck="false" rows="3">' + esc( model.redis_excluded_groups.join( '\n' ) ) + '</textarea>' +
-			'</div>' +
-			'<div class="rc-row" style="border:0">' +
-				'<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="redis-flush">' + icon( 'trash' ) + '<span>' + esc( t( 'btn_redis_flush' ) ) + '</span></button>' +
-			'</div>';
+			body += '<div class="rc-row">' +
+					'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_ttl' ) ) + '</div>' +
+						'<div class="rc-row-desc">' + esc( t( 'row_redis_ttl_desc' ) ) + '</div></div>' +
+					'<select class="rc-select" data-field="redis_max_ttl">' + ttlOptions + '</select>' +
+				'</div>' +
+				'<div class="rc-row rc-row--col">' +
+					'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis_groups' ) ) + '</div>' +
+						'<div class="rc-row-desc">' + esc( t( 'row_redis_groups_desc' ) ) + '</div></div>' +
+					'<textarea class="rc-textarea" data-field="redis_excluded_groups" spellcheck="false" rows="3">' + esc( model.redis_excluded_groups.join( '\n' ) ) + '</textarea>' +
+				'</div>' +
+				'<div class="rc-row" style="border:0">' +
+					'<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="redis-flush">' + icon( 'trash' ) + '<span>' + esc( t( 'btn_redis_flush' ) ) + '</span></button>' +
+				'</div>';
+		}
 
 		return '<div class="rc-card">' +
 			'<div class="rc-card-head">' + icon( 'db' ) +
@@ -419,11 +449,6 @@
 				switchRow( 'smart_cache', t( 'row_smart' ), t( 'row_smart_desc' ) ) +
 				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
-				( state.redis && state.redis.available
-					? ( state.redis.foreign
-						? '<div class="rc-row"><div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_redis' ) ) + '</div><div class="rc-row-desc">' + esc( t( 'redis_foreign' ) ) + '</div></div></div>'
-						: switchRow( 'redis_object_cache', t( 'row_redis' ), t( 'row_redis_desc' ) ) )
-					: '' ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +
 			'</div>' +
@@ -473,6 +498,9 @@
 					'</div>' +
 					'<div class="rc-topbar-spacer"></div>' +
 					'<span data-el="pill">' + statusPill() + '</span>' +
+					( 'nginx' === RC.server
+						? '<button type="button" class="rc-btn rc-btn--warn" data-action="recs-open">' + icon( 'bulb' ) + '<span>' + esc( t( 'btn_server_recs' ) ) + '</span></button>'
+						: '' ) +
 					'<button type="button" class="rc-btn rc-btn--ghost" data-action="warm"' + ( state.warm && state.warm.running ? ' disabled' : '' ) + '>' + icon( 'flame' ) + '<span data-el="warm-label">' + esc( warmLabel() ) + '</span></button>' +
 					'<button type="button" class="rc-btn rc-btn--ghost" data-action="purge">' + icon( 'trash' ) + '<span>' + esc( t( 'btn_clear' ) ) + '</span></button>' +
 				'</div>' +
@@ -480,10 +508,8 @@
 					bannerHtml() +
 					warmbarHtml() +
 					tilesHtml() +
-					devHtml() +
-					settingsHtml() +
-					mediaHtml() +
-					redisHtml() +
+					tabsHtml() +
+					activePanelHtml() +
 					promoHtml() +
 					'<div class="rc-savebar" data-el="savebar">' +
 						'<span class="rc-savebar-text">' + esc( t( 'save_pending' ) ) + '</span>' +
@@ -762,6 +788,13 @@
 				break;
 			case 'webp-scan':
 				doWebpScan( target );
+				break;
+			case 'tab':
+				activeTab = target.dataset.tab;
+				try {
+					window.localStorage.setItem( 'reallycache-tab', activeTab );
+				} catch ( e ) {}
+				render();
 				break;
 			case 'redis-flush':
 				busyButton( target, true );

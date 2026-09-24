@@ -107,7 +107,8 @@ return [
 		'LCP Boost' => 'האצת LCP',
 		'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win' => 'תמונת ה-hero מקבלת עדיפות טעינה עליונה ו-preload — שיפור ישיר ל-Largest Contentful Paint',
 
-		'Server recommendations →' => 'המלצות לשרת ←',
+		'Server recommendations' => 'המלצות לשרת',
+		'Cache settings' => 'הגדרות קאש',
 		'Nginx recommendations' => 'המלצות ל-Nginx',
 		'Paste these blocks into the site\'s Nginx configuration and reload Nginx. They fix the PageSpeed "efficient cache lifetimes" audit and compression.' => 'הדביקו את הבלוקים האלה בקונפיגורציית ה-Nginx של האתר ועשו reload. הם פותרים את סעיף "efficient cache lifetimes" ב-PageSpeed ואת הדחיסה.',
 		'Browser cache headers for static files' => 'כותרות קאש דפדפן לקבצים סטטיים',

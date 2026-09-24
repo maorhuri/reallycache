@@ -256,7 +256,8 @@ class AdminPage {
 			'row_lcp'          => __( 'LCP Boost', 'reallycache' ),
 			'row_lcp_desc'     => __( 'The hero image gets top fetch priority and a preload hint — a direct Largest Contentful Paint win', 'reallycache' ),
 
-			'btn_server_recs'  => __( 'Server recommendations →', 'reallycache' ),
+			'btn_server_recs'  => __( 'Server recommendations', 'reallycache' ),
+			'tab_cache'        => __( 'Cache settings', 'reallycache' ),
 			'recs_title'       => __( 'Nginx recommendations', 'reallycache' ),
 			'recs_intro'       => __( 'Paste these blocks into the site\'s Nginx configuration and reload Nginx. They fix the PageSpeed "efficient cache lifetimes" audit and compression.', 'reallycache' ),
 			'recs_bcache'      => __( 'Browser cache headers for static files', 'reallycache' ),
