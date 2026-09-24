@@ -17,6 +17,8 @@ class Webp {
 	const QUEUE_OPTION  = 'reallycache_webp_queue';
 	const STATE_OPTION  = 'reallycache_webp_state';
 	const TOTALS_OPTION = 'reallycache_webp_totals';
+	const MODE_OPTION   = 'reallycache_webp_mode';
+	const DIRTY_OPTION  = 'reallycache_webp_dirty';
 	const TICK_HOOK     = 'reallycache_webp_tick';
 	const LOCK          = 'reallycache_webp_lock';
 	const META_KEY      = '_reallycache_webp';
@@ -33,6 +35,12 @@ class Webp {
 		}, 20, 2 );
 
 		add_action( 'delete_attachment', [ __CLASS__, 'delete_twins' ] );
+
+		// A full purge means every cached page will be rebuilt with the
+		// current .webp twins, so the "clear your cache" note can go away.
+		add_action( 'reallycache_purged_all', function () {
+			delete_option( self::DIRTY_OPTION );
+		} );
 
 		add_filter( 'reallycache_before_store', function ( $html ) {
 			$config = Config::load();
@@ -51,20 +59,26 @@ class Webp {
 
 	/* ------------------------------------------------------------ queueing */
 
-	/** Queue every unconverted JPEG/PNG in the media library. */
-	public static function seed_library() {
-		$ids = get_posts( [
+	/**
+	 * Queue the media library's JPEG/PNGs. Normally only unconverted images;
+	 * with $force everything is queued and existing twins are regenerated.
+	 */
+	public static function seed_library( $force = false ) {
+		$args = [
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
 			'post_mime_type' => [ 'image/jpeg', 'image/png' ],
 			'posts_per_page' => (int) apply_filters( 'reallycache_webp_max_scan', 5000 ),
 			'fields'         => 'ids',
 			'no_found_rows'  => true,
-			'meta_query'     => [ [ 'key' => self::META_KEY, 'compare' => 'NOT EXISTS' ] ],
-		] );
+		];
+		if ( ! $force ) {
+			$args['meta_query'] = [ [ 'key' => self::META_KEY, 'compare' => 'NOT EXISTS' ] ];
+		}
 
+		update_option( self::MODE_OPTION, $force ? 'redo' : 'fresh', false );
 		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => time() ], false );
-		self::enqueue( array_map( 'intval', $ids ) );
+		self::enqueue( array_map( 'intval', get_posts( $args ) ) );
 	}
 
 	public static function enqueue( array $ids ) {
@@ -128,6 +142,8 @@ class Webp {
 		$batch = array_splice( $queue, 0, max( 1, $count ) );
 		update_option( self::QUEUE_OPTION, $queue, false );
 
+		$overwrite = 'redo' === get_option( self::MODE_OPTION );
+
 		foreach ( $batch as $id ) {
 			$file             = get_attached_file( (int) $id );
 			$state            = self::state();
@@ -135,7 +151,7 @@ class Webp {
 			$state['updated'] = time();
 			update_option( self::STATE_OPTION, $state, false );
 
-			self::convert_attachment( (int) $id );
+			self::convert_attachment( (int) $id, $overwrite );
 
 			$state            = self::state();
 			$state['done']   += 1;
@@ -170,8 +186,12 @@ class Webp {
 
 	/* ---------------------------------------------------------- conversion */
 
-	/** Convert an attachment's original file and every registered size. */
-	public static function convert_attachment( $attachment_id ) {
+	/**
+	 * Convert an attachment's original file and every registered size.
+	 * The originals are never modified or removed — each conversion only
+	 * adds a .webp twin next to the source file.
+	 */
+	public static function convert_attachment( $attachment_id, $overwrite = false ) {
 		$file = get_attached_file( $attachment_id );
 		if ( ! $file || ! is_file( $file ) ) {
 			update_post_meta( $attachment_id, self::META_KEY, -1 );
@@ -191,28 +211,39 @@ class Webp {
 
 		$saved = 0;
 		foreach ( array_unique( $files ) as $path ) {
-			$saved += self::convert_file( $path );
+			$saved += self::convert_file( $path, $overwrite );
 		}
 
+		$had_meta = '' !== (string) get_post_meta( $attachment_id, self::META_KEY, true );
+		$previous = max( 0, (int) get_post_meta( $attachment_id, self::META_KEY, true ) );
 		update_post_meta( $attachment_id, self::META_KEY, $saved );
 
 		$totals           = self::totals();
-		$totals['count'] += 1;
-		$totals['saved'] += $saved;
+		$totals['count'] += $had_meta ? 0 : 1;
+		$totals['saved'] += $overwrite ? ( $saved - $previous ) : $saved;
 		update_option( self::TOTALS_OPTION, $totals, false );
+
+		if ( $saved > 0 ) {
+			// Cached pages still reference the pre-conversion HTML — the UI
+			// nudges the admin to clear the cache so visitors get the twins.
+			update_option( self::DIRTY_OPTION, 1, false );
+		}
 
 		return $saved;
 	}
 
 	/** @return int Bytes saved (0 when skipped or WebP came out larger). */
-	public static function convert_file( $path ) {
+	public static function convert_file( $path, $overwrite = false ) {
 		if ( ! is_file( $path ) || ! preg_match( '/\.(jpe?g|png)$/i', $path ) ) {
 			return 0;
 		}
 
 		$webp = $path . '.webp';
 		if ( is_file( $webp ) ) {
-			return 0;
+			if ( ! $overwrite ) {
+				return 0;
+			}
+			@unlink( $webp );
 		}
 
 		$quality = (int) apply_filters( 'reallycache_webp_quality', 82 );
@@ -309,25 +340,42 @@ class Webp {
 	/* -------------------------------------------------------------- status */
 
 	public static function status() {
+		global $wpdb;
+
 		$state  = self::state();
 		$totals = self::totals();
 		$queued = self::queued();
 
+		$library_total     = (int) $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type IN ('image/jpeg','image/png')"
+		);
+		$library_converted = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm
+			 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			 WHERE pm.meta_key = %s AND p.post_type = 'attachment'",
+			self::META_KEY
+		) );
+
 		return [
-			'supported' => self::is_supported(),
-			'converted' => (int) $totals['count'],
-			'saved'     => (int) $totals['saved'],
-			'done'      => (int) $state['done'],
-			'total'     => (int) $state['total'],
-			'pending'   => $queued,
-			'current'   => (string) $state['current'],
-			'running'   => $queued > 0,
+			'supported'         => self::is_supported(),
+			'converted'         => (int) $totals['count'],
+			'saved'             => (int) $totals['saved'],
+			'library_total'     => $library_total,
+			'library_converted' => min( $library_converted, $library_total ),
+			'done'              => (int) $state['done'],
+			'total'             => (int) $state['total'],
+			'pending'           => $queued,
+			'current'           => (string) $state['current'],
+			'running'           => $queued > 0,
+			'cache_stale'       => (bool) get_option( self::DIRTY_OPTION ),
 		];
 	}
 
 	public static function reset() {
 		delete_option( self::QUEUE_OPTION );
 		delete_option( self::STATE_OPTION );
+		delete_option( self::MODE_OPTION );
+		delete_option( self::DIRTY_OPTION );
 		delete_transient( self::LOCK );
 		wp_clear_scheduled_hook( self::TICK_HOOK );
 	}

@@ -159,6 +159,8 @@ class AdminPage {
 			'webp_saved'       => __( 'Space saved', 'reallycache' ),
 			'webp_pending'     => __( 'Waiting', 'reallycache' ),
 			'btn_webp_scan'    => __( 'Convert existing images', 'reallycache' ),
+			'btn_webp_rescan'  => __( 'Re-convert all images', 'reallycache' ),
+			'webp_stale_note'  => __( 'New WebP images were created, but cached pages still serve the old ones — clear the cache to update them.', 'reallycache' ),
 			'webp_now'         => __( 'Converting:', 'reallycache' ),
 			'toast_webp'       => __( 'Image conversion started in the background', 'reallycache' ),
 

@@ -113,8 +113,8 @@ class RestApi {
 		return rest_ensure_response( $this->state() );
 	}
 
-	public function webp_scan() {
-		Media\Webp::seed_library();
+	public function webp_scan( \WP_REST_Request $request ) {
+		Media\Webp::seed_library( ! empty( $request->get_param( 'force' ) ) );
 
 		return rest_ensure_response( $this->state() );
 	}

@@ -205,6 +205,20 @@
 		'</div>';
 	}
 
+	function webpDonut( w ) {
+		var pct    = w.library_total ? Math.round( ( w.library_converted / w.library_total ) * 100 ) : 0;
+		var circ   = 97.4; // 2πr for r=15.5
+		var offset = ( circ * ( 100 - pct ) ) / 100;
+
+		return '<div class="rc-donut-wrap">' +
+			'<svg class="rc-donut" viewBox="0 0 36 36" aria-hidden="true">' +
+				'<circle class="rc-donut-track" cx="18" cy="18" r="15.5"></circle>' +
+				'<circle class="rc-donut-fill" data-el="webp-donut" cx="18" cy="18" r="15.5" stroke-dasharray="' + circ + '" stroke-dashoffset="' + offset + '"></circle>' +
+			'</svg>' +
+			'<span class="rc-donut-label" data-el="webp-pct">' + pct + '%</span>' +
+		'</div>';
+	}
+
 	function mediaHtml() {
 		var w = state.webp;
 		if ( ! w ) {
@@ -215,14 +229,24 @@
 		if ( ! w.supported ) {
 			body = '<div class="rc-row"><div class="rc-row-text"><div class="rc-row-desc">' + esc( t( 'webp_unsupported' ) ) + '</div></div></div>';
 		} else {
+			var allDone = w.library_total > 0 && w.library_converted >= w.library_total;
+
 			body = switchRow( 'webp_enabled', t( 'row_webp' ), t( 'row_webp_desc' ) ) +
 				'<div class="rc-media-stats">' +
-					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong data-el="webp-converted">' + esc( formatNumber( w.converted ) ) + '</strong></div>' +
+					webpDonut( w ) +
+					'<div class="rc-media-stat">' + esc( t( 'webp_converted' ) ) + '<strong><span data-el="webp-libdone">' + esc( formatNumber( w.library_converted ) ) + '</span> / ' + esc( formatNumber( w.library_total ) ) + '</strong></div>' +
 					'<div class="rc-media-stat">' + esc( t( 'webp_saved' ) ) + '<strong data-el="webp-saved">' + formatBytes( w.saved ) + '</strong></div>' +
 					'<div class="rc-media-stat"' + ( w.pending ? '' : ' hidden' ) + '>' + esc( t( 'webp_pending' ) ) + '<strong data-el="webp-pending">' + esc( formatNumber( w.pending ) ) + '</strong></div>' +
-				'</div>' +
-				'<div class="rc-row" style="border:0">';
+				'</div>';
 
+			if ( w.cache_stale && ! w.running && state.stats.pages > 0 ) {
+				body += '<div class="rc-banner rc-banner--warn rc-banner--slim">' + icon( 'warn' ) +
+					'<div class="rc-banner-text">' + esc( t( 'webp_stale_note' ) ) + '</div>' +
+					'<button type="button" class="rc-btn rc-btn--primary rc-btn--sm" data-action="purge">' + esc( t( 'btn_clear' ) ) + '</button>' +
+				'</div>';
+			}
+
+			body += '<div class="rc-row" style="border:0">';
 			if ( w.running ) {
 				var pct = w.total ? Math.round( ( w.done / w.total ) * 100 ) : 0;
 				body += '<div style="flex:1">' +
@@ -232,6 +256,8 @@
 					'</div>' +
 					'<div class="rc-bar"><div class="rc-bar-fill" data-el="webp-fill" style="width:' + pct + '%"></div></div>' +
 				'</div>';
+			} else if ( allDone ) {
+				body += '<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="webp-scan" data-force="1">' + icon( 'image' ) + '<span>' + esc( t( 'btn_webp_rescan' ) ) + '</span></button>';
 			} else {
 				body += '<button type="button" class="rc-btn rc-btn--ghost rc-btn--sm" data-action="webp-scan">' + icon( 'image' ) + '<span>' + esc( t( 'btn_webp_scan' ) ) + '</span></button>';
 			}
@@ -477,11 +503,17 @@
 			setText( 'webp-current', state.webp.current || '…' );
 			setText( 'webp-count', state.webp.done + '/' + state.webp.total );
 			setBar( 'webp-fill', state.webp.done, state.webp.total );
-			setText( 'webp-converted', formatNumber( state.webp.converted ) );
+			setText( 'webp-libdone', formatNumber( state.webp.library_converted ) );
 			setText( 'webp-pending', formatNumber( state.webp.pending ) );
 			var saved = el( 'webp-saved' );
 			if ( saved ) {
 				saved.innerHTML = formatBytes( state.webp.saved );
+			}
+			var pct = state.webp.library_total ? Math.round( ( state.webp.library_converted / state.webp.library_total ) * 100 ) : 0;
+			setText( 'webp-pct', pct + '%' );
+			var donut = el( 'webp-donut' );
+			if ( donut ) {
+				donut.setAttribute( 'stroke-dashoffset', ( 97.4 * ( 100 - pct ) ) / 100 );
 			}
 		}
 		var pages = el( 'tile-pages' );
@@ -580,7 +612,7 @@
 
 	function doWebpScan( btn ) {
 		busyButton( btn, true );
-		api( 'webp-scan', {} ).then( function ( payload ) {
+		api( 'webp-scan', { force: '1' === btn.dataset.force } ).then( function ( payload ) {
 			applyState( payload );
 			toast( t( 'toast_webp' ), true );
 		} ).catch( function () {

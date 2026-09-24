@@ -78,6 +78,8 @@ return [
 		'Space saved' => 'נפח שנחסך',
 		'Waiting' => 'ממתינות',
 		'Convert existing images' => 'המרת תמונות קיימות',
+		'Re-convert all images' => 'המרת כל התמונות מחדש',
+		'New WebP images were created, but cached pages still serve the old ones — clear the cache to update them.' => 'נוצרו תמונות WebP חדשות, אבל עמודים בקאש עדיין מגישים את הישנות — נקו את הקאש כדי לעדכן אותם.',
 		'Converting:' => 'ממיר עכשיו:',
 		'Image conversion started in the background' => 'המרת התמונות התחילה ברקע',
 
