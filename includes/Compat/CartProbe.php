@@ -28,6 +28,9 @@ class CartProbe {
 
 	const HOOK = 'reallycache_cart_probe';
 
+	/** Bumped when the algorithm changes — stale verdicts re-judge themselves. */
+	const ALGO_VERSION = 2;
+
 	public static function register() {
 		add_action( self::HOOK, [ __CLASS__, 'run' ] );
 
@@ -40,6 +43,10 @@ class CartProbe {
 				return;
 			}
 			$config = Config::load();
+			if ( (int) ( $config['cart_probe_ver'] ?? 0 ) !== self::ALGO_VERSION ) {
+				Config::save( [ 'cart_cache_ok' => null, 'cart_probe_at' => 0, 'cart_probe_ver' => self::ALGO_VERSION ] );
+				$config = Config::load();
+			}
 			if ( (int) ( $config['cart_probe_at'] ?? 0 ) > time() - WEEK_IN_SECONDS ) {
 				return;
 			}

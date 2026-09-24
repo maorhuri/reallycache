@@ -54,6 +54,7 @@ class Config {
 			// cached pages too. null/false = safe mode (live pages).
 			'cart_cache_ok'          => null,
 			'cart_probe_at'          => 0,
+			'cart_probe_ver'         => 0,
 			// Delivery pack.
 			'webp_enabled'           => true,
 			'webp_on_upload'         => true,
