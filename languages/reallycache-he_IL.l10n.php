@@ -35,6 +35,8 @@ return [
 		'Deactivate and reactivate ReallyCache to reinstall it — until then pages are not served from cache.' => 'כבו והפעילו מחדש את ReallyCache כדי להתקין אותו מחדש — עד אז עמודים לא מוגשים מהקאש.',
 		'Another caching plugin controls this site.' => 'תוסף קאש אחר שולט באתר הזה.',
 		'advanced-cache.php belongs to a different plugin. Remove or deactivate the other cache plugin, then deactivate and reactivate ReallyCache.' => 'הקובץ advanced-cache.php שייך לתוסף אחר. הסירו או כבו את תוסף הקאש האחר, ואז כבו והפעילו מחדש את ReallyCache.',
+		'The cache layer did not load on this request.' => 'שכבת הקאש לא נטענה בבקשה הזו.',
+		'Usually a migration or PHP switch dropped the drop-in or WP_CACHE. Auto-repair just reinstalled both — refresh this page. If this message stays, wp-config.php is not writable.' => 'בדרך כלל העברת אתר או החלפת PHP מחקו את ה-drop-in או את WP_CACHE. תיקון אוטומטי הרגע התקין את שניהם מחדש — רעננו את העמוד. אם ההודעה נשארת, ‏wp-config.php לא ניתן לכתיבה.',
 		'The cache folder is not writable!' => 'תיקיית הקאש לא ניתנת לכתיבה!',
 		'Nothing can be saved to %s — usually leftover permissions from a previous cache plugin. Fix the folder\'s owner/permissions (or delete wp-content/cache and reload).' => 'אי אפשר לשמור כלום ב-%s — בדרך כלל הרשאות שנשארו מתוסף קאש קודם. תקנו את הבעלים/הרשאות של התיקייה (או מחקו את wp-content/cache ורעננו).',
 

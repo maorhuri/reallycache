@@ -182,6 +182,13 @@ class RestApi {
 	 * plugin) otherwise looks like everything works while nothing is saved.
 	 */
 	private function health() {
+		// REST requests don't fire admin_init — self-heal here too, so a
+		// dashboard visit alone repairs a lost drop-in or WP_CACHE.
+		if ( ! defined( 'REALLYCACHE_DROPIN' ) && ! get_transient( 'reallycache_repair' ) ) {
+			set_transient( 'reallycache_repair', 1, 5 * MINUTE_IN_SECONDS );
+			Setup::repair();
+		}
+
 		$root = WP_CONTENT_DIR . '/cache/reallycache';
 		if ( ! is_dir( $root ) ) {
 			wp_mkdir_p( $root );
@@ -196,6 +203,7 @@ class RestApi {
 		return [
 			'cache_writable' => $writable,
 			'cache_root'     => 'wp-content/cache/reallycache',
+			'dropin_loaded'  => defined( 'REALLYCACHE_DROPIN' ),
 		];
 	}
 

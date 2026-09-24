@@ -2,7 +2,7 @@
 /*
 	Plugin Name: ReallyCache
 	Description: Really fast, really simple page caching. Server-aware: file cache everywhere, LiteSpeed and Nginx FastCGI cache where available.
-	Version: 0.7.4
+	Version: 0.7.5
 	Author: MVN
 	Text Domain: reallycache
 	Domain Path: /languages/
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REALLYCACHE_VERSION', '0.7.4' );
+define( 'REALLYCACHE_VERSION', '0.7.5' );
 define( 'REALLYCACHE_DIR', __DIR__ );
 define( 'REALLYCACHE_FILE', __FILE__ );
 
@@ -91,6 +91,14 @@ add_action( 'plugins_loaded', function () {
 
 		if ( $hosts && $hosts !== array_values( $current ) ) {
 			ReallyCache\Config::save( [ 'allowed_hosts' => $hosts ] );
+		}
+
+		// Self-heal the cache layer: a migration or PHP switch can drop the
+		// advanced-cache.php drop-in or the WP_CACHE constant, silently
+		// disabling all caching while the admin UI still looks healthy.
+		if ( ! defined( 'REALLYCACHE_DROPIN' ) && ! get_transient( 'reallycache_repair' ) ) {
+			set_transient( 'reallycache_repair', 1, 5 * MINUTE_IN_SECONDS );
+			ReallyCache\Setup::repair();
 		}
 
 		// Self-heal the nightly-refresh schedule if cron lost it.

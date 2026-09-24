@@ -20,6 +20,19 @@ class Setup {
 		}
 	}
 
+	/**
+	 * Self-heal: reinstall the drop-in and re-enable WP_CACHE. Site
+	 * migrations and PHP upgrades routinely lose one or both, which used
+	 * to silently disable all caching until a manual reactivation.
+	 */
+	public static function repair() {
+		if ( is_file( REALLYCACHE_DIR . '/advanced-cache.php' ) ) {
+			@copy( REALLYCACHE_DIR . '/advanced-cache.php', WP_CONTENT_DIR . '/advanced-cache.php' );
+		}
+		self::set_wp_cache_constant( true );
+		Config::save( [] ); // Refreshes plugin_dir in the config file too.
+	}
+
 	public static function deactivate() {
 		// Only remove the drop-in if it is ours — another cache plugin may
 		// have installed its own since.

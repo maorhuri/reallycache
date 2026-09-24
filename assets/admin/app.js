@@ -194,6 +194,10 @@
 			banners += '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
 				'<div class="rc-banner-text"><strong>' + esc( t( 'dropin_warn_title' ) ) + '</strong><br>' + esc( t( 'dropin_warn_body' ) ) + '</div>' +
 			'</div>';
+		} else if ( state.health && false === state.health.dropin_loaded ) {
+			banners += '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
+				'<div class="rc-banner-text"><strong>' + esc( t( 'health_load_title' ) ) + '</strong><br>' + esc( t( 'health_load_body' ) ) + '</div>' +
+			'</div>';
 		} else if ( false === state.dropin_ours ) {
 			banners += '<div class="rc-banner rc-banner--warn">' + icon( 'warn' ) +
 				'<div class="rc-banner-text"><strong>' + esc( t( 'dropin_foreign_title' ) ) + '</strong><br>' + esc( t( 'dropin_foreign_body' ) ) + '</div>' +

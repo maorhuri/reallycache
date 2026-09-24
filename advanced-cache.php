@@ -15,6 +15,12 @@ if ( defined( 'WP_INSTALLING' ) && WP_INSTALLING ) {
 	return;
 }
 
+// Marks that WordPress actually loaded this file — the self-heal checks
+// this to catch a missing file AND a disabled WP_CACHE with one signal.
+if ( ! defined( 'REALLYCACHE_DROPIN' ) ) {
+	define( 'REALLYCACHE_DROPIN', 1 );
+}
+
 $reallycache_config_file = __DIR__ . '/reallycache/config.php';
 if ( ! is_readable( $reallycache_config_file ) ) {
 	return;

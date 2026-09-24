@@ -217,6 +217,8 @@ class AdminPage {
 			'dropin_warn_body'  => __( 'Deactivate and reactivate ReallyCache to reinstall it — until then pages are not served from cache.', 'reallycache' ),
 			'dropin_foreign_title' => __( 'Another caching plugin controls this site.', 'reallycache' ),
 			'dropin_foreign_body'  => __( 'advanced-cache.php belongs to a different plugin. Remove or deactivate the other cache plugin, then deactivate and reactivate ReallyCache.', 'reallycache' ),
+			'health_load_title'    => __( 'The cache layer did not load on this request.', 'reallycache' ),
+			'health_load_body'     => __( 'Usually a migration or PHP switch dropped the drop-in or WP_CACHE. Auto-repair just reinstalled both — refresh this page. If this message stays, wp-config.php is not writable.', 'reallycache' ),
 			'health_write_title'   => __( 'The cache folder is not writable!', 'reallycache' ),
 			'health_write_body'    => __( 'Nothing can be saved to %s — usually leftover permissions from a previous cache plugin. Fix the folder\'s owner/permissions (or delete wp-content/cache and reload).', 'reallycache' ),
 
