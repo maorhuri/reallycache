@@ -321,6 +321,12 @@
 	}
 
 	function wooCartNote() {
+		// With protection off, none of the cart machinery described below is
+		// active — cart pages are cached for everyone. Warn, not a verdict.
+		if ( state.settings && ! state.settings.woocommerce_protection ) {
+			return '<div class="rc-row-desc" style="padding-block-end:10px;color:var(--rc-warn)">' + esc( t( 'woo_protection_off' ) ) + '</div>';
+		}
+
 		var v     = state.woo_cart_cache;
 		var text  = t( 'woo_cart_probing' );
 		var green = false;
@@ -332,10 +338,14 @@
 			if ( 'diff' === state.woo_cart_note ) {
 				text  = state.woo_cart_variant ? t( 'woo_cart_variant' ) : t( 'woo_cart_safe' );
 				green = !! state.woo_cart_variant;
+			} else if ( 'fetch-fail' === state.woo_cart_note ) {
+				// The site couldn't reach itself — a loopback problem, not
+				// a catalog problem; misdirecting the admin wastes hours.
+				text = t( 'woo_cart_fetchfail' );
 			} else {
-				// The probe never managed to test the theme (no purchasable
-				// product / fetch failure) — say that, don't blame the theme.
-				text = t( 'woo_cart_untested' );
+				// The probe never managed to build a test cart — say that,
+				// don't blame the theme, and name the actual fallback mode.
+				text = state.woo_cart_variant ? t( 'woo_cart_untested' ) : t( 'woo_cart_untested_live' );
 			}
 		}
 
@@ -468,6 +478,7 @@
 				'<p class="rc-row-desc">' + esc( t( 'recs_intro' ) ) + '</p>' +
 				snippetBlock( t( 'recs_bcache' ), 'browser_cache' ) +
 				snippetBlock( t( 'recs_gzip' ), 'gzip' ) +
+				snippetBlock( t( 'recs_private' ), 'private_cache' ) +
 			'</div>' +
 		'</div>';
 	}
@@ -548,7 +559,7 @@
 						} ).join( '' ) +
 					'</select>' +
 				'</div>' +
-				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) + wooCartNote() : '' ) +
+				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) + '<div data-el="woonote">' + wooCartNote() + '</div>' : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +
@@ -654,7 +665,18 @@
 				if ( ! isDirty() && ! saving ) {
 					applyState( payload );
 				} else {
-					state.woo_cart_cache = payload.woo_cart_cache;
+					// Unsaved edits on screen — merge the whole probe tuple
+					// (a verdict without its note/diff renders the wrong
+					// message) and repaint just the note, not the form.
+					state.woo_cart_cache   = payload.woo_cart_cache;
+					state.woo_cart_note    = payload.woo_cart_note;
+					state.woo_cart_diff    = payload.woo_cart_diff;
+					state.woo_cart_variant = payload.woo_cart_variant;
+					state.woo_fragments    = payload.woo_fragments;
+					var note = el( 'woonote' );
+					if ( note ) {
+						note.innerHTML = wooCartNote();
+					}
 					scheduleProbeRefresh();
 				}
 			} ).catch( scheduleProbeRefresh );

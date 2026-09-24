@@ -138,11 +138,16 @@ class Gate {
 				break;
 			}
 		}
-		if ( ! $php_session_boilerplate ) {
-			foreach ( headers_list() as $header ) {
-				if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/\b(?:private|no-store)\b/i', $header ) ) {
-					return $this->reject( 'cache-control' );
+		foreach ( headers_list() as $header ) {
+			if ( 0 === stripos( $header, 'Cache-Control:' ) && preg_match( '/\b(?:private|no-store)\b/i', $header ) ) {
+				// Only PHP's exact session boilerplate value is waved
+				// through; a plugin that replaced it with its own private/
+				// no-store made a deliberate choice and is honored even
+				// when the 1981 Expires is present.
+				if ( $php_session_boilerplate && preg_match( '/no-store,\s*no-cache,\s*must-revalidate/i', $header ) ) {
+					continue;
 				}
+				return $this->reject( 'cache-control' );
 			}
 		}
 
@@ -233,6 +238,13 @@ class Gate {
 
 	private function has_bypass_cookie() {
 		$prefixes = (array) ( $this->config['bypass_cookies'] ?? [] );
+		// Cookies that mark server-side personalization the cache key
+		// doesn't capture — serving the shared entry to these visitors
+		// would freeze one visitor's currency/wishlist into everyone's
+		// page. Kept deliberately short: cookies most visitors carry
+		// (consent banners, analytics) would kill the hit rate and their
+		// plugins personalize client-side anyway.
+		$prefixes = array_merge( $prefixes, [ 'woocs_', 'yith_wcwl_session_', 'wcml_currency', 'wp_multi_currency' ] );
 		if ( ! empty( $this->config['woocommerce_protection'] ) && empty( $this->config['cart_cache_ok'] ) ) {
 			// Cart holders on a server-rendered-cart theme get a private
 			// per-cart cache entry (see CacheKey::cart_variant) — only

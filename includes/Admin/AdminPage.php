@@ -62,6 +62,7 @@ class AdminPage {
 			'snippets' => [
 				'browser_cache' => (string) file_get_contents( REALLYCACHE_DIR . '/docs/nginx-browser-cache.conf' ),
 				'gzip'          => "# ReallyCache — compression (inside http { } or server { })\ngzip on;\ngzip_comp_level 5;\ngzip_min_length 256;\ngzip_types text/css application/javascript application/json image/svg+xml application/xml text/plain font/ttf;\ngzip_vary on;",
+				'private_cache' => "# ReallyCache — the page cache is served by PHP, never by Nginx directly.\n# Blocks direct URL access to cached copies (including private per-cart entries).\nlocation ~ /wp-content/cache/reallycache { deny all; }",
 			],
 			'i18n'    => self::strings(),
 		] );
@@ -258,6 +259,9 @@ class AdminPage {
 			'woo_cart_probing' => __( 'Checking whether the theme supports cached pages for visitors with a cart…', 'reallycache' ),
 			'woo_cart_diff'    => __( 'Show what differs with a cart (diagnostic)', 'reallycache' ),
 			'woo_cart_untested' => __( 'Could not build a test cart to verify the theme (no purchasable product found) — running in the safe private-copy mode meanwhile; re-trying daily', 'reallycache' ),
+			'woo_cart_untested_live' => __( 'Could not build a test cart to verify the theme (no purchasable product found) — visitors with a cart get live pages meanwhile; re-trying daily', 'reallycache' ),
+			'woo_cart_fetchfail' => __( 'The site could not reach itself to test the theme (loopback request failed — often a firewall, basic-auth or DNS issue) — visitors with a cart are served safely meanwhile; re-trying daily', 'reallycache' ),
+			'woo_protection_off' => __( 'WooCommerce protection is off — cart and checkout pages may be cached and shared between visitors. Recommended: on.', 'reallycache' ),
 			'btn_cart_probe'   => __( 'Check now', 'reallycache' ),
 			'row_woo'         => __( 'WooCommerce protection', 'reallycache' ),
 			'row_woo_desc'    => __( 'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache', 'reallycache' ),
@@ -326,6 +330,7 @@ class AdminPage {
 			'recs_intro'       => __( 'Paste these blocks into the site\'s Nginx configuration and reload Nginx. They fix the PageSpeed "efficient cache lifetimes" audit and compression.', 'reallycache' ),
 			'recs_bcache'      => __( 'Browser cache headers for static files', 'reallycache' ),
 			'recs_gzip'        => __( 'Compression', 'reallycache' ),
+			'recs_private'     => __( 'Protect the cache directory', 'reallycache' ),
 			'btn_copy'         => __( 'Copy', 'reallycache' ),
 			'toast_copied'     => __( 'Copied to clipboard', 'reallycache' ),
 

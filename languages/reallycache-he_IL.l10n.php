@@ -76,6 +76,9 @@ return [
 		'Checking whether the theme supports cached pages for visitors with a cart…' => 'בודק אם התבנית תומכת בקאש גם לגולשים עם עגלה…',
 		'Show what differs with a cart (diagnostic)' => 'הצג מה שונה כשיש עגלה (אבחון)',
 		'Could not build a test cart to verify the theme (no purchasable product found) — running in the safe private-copy mode meanwhile; re-trying daily' => 'לא הצלחנו לבנות עגלת-בדיקה כדי לאמת את התבנית (לא נמצא מוצר שניתן להוסיף) — בינתיים רץ מצב העותק-הפרטי הבטוח; מנסים שוב מדי יום',
+		'Could not build a test cart to verify the theme (no purchasable product found) — visitors with a cart get live pages meanwhile; re-trying daily' => 'לא הצלחנו לבנות עגלת-בדיקה כדי לאמת את התבנית (לא נמצא מוצר שניתן להוסיף) — בינתיים גולשים עם עגלה מקבלים עמודים חיים; מנסים שוב מדי יום',
+		'The site could not reach itself to test the theme (loopback request failed — often a firewall, basic-auth or DNS issue) — visitors with a cart are served safely meanwhile; re-trying daily' => 'האתר לא הצליח לפנות לעצמו כדי לבדוק את התבנית (בקשת loopback נכשלה — לרוב חומת-אש, סיסמת שרת או בעיית DNS) — בינתיים גולשים עם עגלה מקבלים עמודים בטוחים; מנסים שוב מדי יום',
+		'WooCommerce protection is off — cart and checkout pages may be cached and shared between visitors. Recommended: on.' => 'הגנת ווקומרס כבויה — עמודי עגלה ותשלום עלולים להישמר בקאש ולהיות משותפים בין גולשים. מומלץ: פועל.',
 		'Check now' => 'בדיקה עכשיו',
 		'WooCommerce protection' => 'הגנת WooCommerce',
 		'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache' => 'עמודי העגלה, התשלום והאזור האישי מזוהים אוטומטית מהגדרות ווקומרס ולא נשמרים בקאש, וגולשים עם עגלה תמיד עוקפים את הקאש',
@@ -144,6 +147,7 @@ return [
 		'Paste these blocks into the site\'s Nginx configuration and reload Nginx. They fix the PageSpeed "efficient cache lifetimes" audit and compression.' => 'הדביקו את הבלוקים האלה בקונפיגורציית ה-Nginx של האתר ועשו reload. הם פותרים את סעיף "efficient cache lifetimes" ב-PageSpeed ואת הדחיסה.',
 		'Browser cache headers for static files' => 'כותרות קאש דפדפן לקבצים סטטיים',
 		'Compression' => 'דחיסה',
+		'Protect the cache directory' => 'הגנה על תיקיית הקאש',
 		'Copy' => 'העתקה',
 		'Copied to clipboard' => 'הועתק ללוח',
 

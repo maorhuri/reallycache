@@ -48,10 +48,17 @@ class FileDriver implements DriverInterface {
 		}
 
 		$last_modified = gmdate( 'D, d M Y H:i:s', $mtime ) . ' GMT';
+		$is_cart       = false !== strpos( $key->filename(), '-c' );
 
 		header( 'X-ReallyCache: HIT' );
 		header( 'Age: ' . ( time() - $mtime ) );
-		header( 'Last-Modified: ' . $last_modified );
+		if ( $is_cart ) {
+			// A private per-cart copy: any intermediary (CDN, proxy) that
+			// cached this 200 would hand one visitor's cart page to everyone.
+			header( 'Cache-Control: private, no-store, must-revalidate' );
+		} else {
+			header( 'Last-Modified: ' . $last_modified );
+		}
 		// Mobile gets its own entry, so intermediaries must key on UA too.
 		header( 'Vary: Accept-Encoding' . ( empty( $this->config['separate_mobile'] ) ? '' : ', User-Agent' ) );
 
@@ -63,7 +70,7 @@ class FileDriver implements DriverInterface {
 			}
 		}
 
-		if ( isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) && trim( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) === $last_modified ) {
+		if ( ! $is_cart && isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) && trim( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) === $last_modified ) {
 			header( 'HTTP/1.1 304 Not Modified' );
 			exit;
 		}
@@ -92,6 +99,16 @@ class FileDriver implements DriverInterface {
 		$dir = dirname( $file );
 		if ( ! is_dir( $dir ) && ! @mkdir( $dir, 0755, true ) && ! is_dir( $dir ) ) {
 			return;
+		}
+
+		// Per-cart variants are minted from visitor cookies; even with the
+		// cookie-shape validation upstream, a hard per-URL cap bounds what
+		// any cookie-rotating client can write to disk.
+		if ( false !== strpos( $key->filename(), '-c' ) && ! is_file( $file ) ) {
+			$existing = glob( $dir . '/index*-c*.html' ) ?: [];
+			if ( count( $existing ) >= 20 ) {
+				return;
+			}
 		}
 
 		$this->ensure_root_guard();
@@ -171,7 +188,7 @@ class FileDriver implements DriverInterface {
 		// Private per-cart entries live 15 minutes; sweep dead ones on
 		// every pass regardless of the site TTL, or a "permanent" cache
 		// would collect one file per cart state forever.
-		$cart_cutoff = $now - max( 10 * MINUTE_IN_SECONDS, (int) apply_filters( 'reallycache_cart_gc', HOUR_IN_SECONDS ) );
+		$cart_cutoff = $now - max( 10 * MINUTE_IN_SECONDS, (int) apply_filters( 'reallycache_cart_gc', 30 * MINUTE_IN_SECONDS ) );
 		$cutoff      = $now - $ttl;
 
 		$it = new \RecursiveIteratorIterator(
@@ -246,10 +263,18 @@ class FileDriver implements DriverInterface {
 		return isset( $meta['ttl'] ) ? (int) $meta['ttl'] : null;
 	}
 
-	/** Keeps directory listings of the cache tree from enumerating cached URLs. */
+	/**
+	 * Keeps directory listings of the cache tree from enumerating cached
+	 * URLs, and denies direct HTTP access to private per-cart copies —
+	 * PHP serves them itself via readfile(), so the web server never
+	 * needs to. (Apache only; the Nginx recommendations carry the
+	 * equivalent location block.)
+	 */
 	private function ensure_root_guard() {
-		if ( ! is_file( $this->root . '/.htaccess' ) ) {
-			@file_put_contents( $this->root . '/.htaccess', "Options -Indexes\n" );
+		$guard = "Options -Indexes\n<Files \"index-*-c*\">\nRequire all denied\n</Files>\n<Files \"index-c*\">\nRequire all denied\n</Files>\n";
+		$path  = $this->root . '/.htaccess';
+		if ( ! is_file( $path ) || false === strpos( (string) @file_get_contents( $path ), 'index-c' ) ) {
+			@file_put_contents( $path, $guard );
 		}
 	}
 

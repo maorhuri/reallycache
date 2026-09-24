@@ -319,11 +319,17 @@ class Warmer {
 	 * batch so the warmer can never outrun the server rendering the pages.
 	 */
 	public static function warm_url( $url, $mobile_too = false ) {
-		// Same-host only, no redirects: queue URLs pass through filters,
-		// and following a crafted redirect would be blind SSRF.
-		$url_host  = strtolower( (string) parse_url( $url, PHP_URL_HOST ) );
-		$site_host = strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) );
-		if ( '' === $url_host || $url_host !== $site_host ) {
+		// Same scheme/host/port only, no redirects: queue URLs pass through
+		// filters, and a crafted host, an odd port (:2083, :6379) or a
+		// redirect would each turn the warmer into blind SSRF.
+		$parts = wp_parse_url( $url );
+		$site  = wp_parse_url( home_url() );
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$defaults = [ 'http' => 80, 'https' => 443 ];
+		if ( ! isset( $defaults[ $scheme ] )
+			|| '' === (string) ( $parts['host'] ?? '' )
+			|| strtolower( $parts['host'] ) !== strtolower( (string) ( $site['host'] ?? '' ) )
+			|| (int) ( $parts['port'] ?? $defaults[ $scheme ] ) !== (int) ( $site['port'] ?? $defaults[ strtolower( (string) ( $site['scheme'] ?? 'http' ) ) ] ?? 80 ) ) {
 			return;
 		}
 
@@ -420,19 +426,36 @@ class Warmer {
 		wp_clear_scheduled_hook( self::DAILY_HOOK );
 	}
 
-	/** Shared secret for the public worker endpoints (loopbacks carry no cookies). */
+	/**
+	 * Token for the public worker endpoints (loopbacks carry no cookies).
+	 * Time-windowed HMAC of a stored secret, never the secret itself: the
+	 * loopback may cross the network on proxied hosts, so a captured value
+	 * must die on its own — accepted for the current or previous 10-minute
+	 * window, ~20 minutes of validity at most.
+	 */
 	public static function token() {
-		$token = get_option( self::TOKEN_OPTION );
-		if ( ! is_string( $token ) || strlen( $token ) < 32 ) {
-			$token = wp_generate_password( 48, false, false );
-			update_option( self::TOKEN_OPTION, $token, false );
-		}
-
-		return $token;
+		return hash_hmac( 'sha256', (string) (int) floor( time() / 600 ), self::secret() );
 	}
 
 	public static function verify_token( $key ) {
-		return is_string( $key ) && hash_equals( self::token(), $key );
+		if ( ! is_string( $key ) || '' === $key ) {
+			return false;
+		}
+		$slot   = (int) floor( time() / 600 );
+		$secret = self::secret();
+
+		return hash_equals( hash_hmac( 'sha256', (string) $slot, $secret ), $key )
+			|| hash_equals( hash_hmac( 'sha256', (string) ( $slot - 1 ), $secret ), $key );
+	}
+
+	private static function secret() {
+		$secret = get_option( self::TOKEN_OPTION );
+		if ( ! is_string( $secret ) || strlen( $secret ) < 32 ) {
+			$secret = wp_generate_password( 48, false, false );
+			update_option( self::TOKEN_OPTION, $secret, false );
+		}
+
+		return $secret;
 	}
 
 	private static function queued() {

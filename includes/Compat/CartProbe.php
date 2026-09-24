@@ -29,13 +29,13 @@ class CartProbe {
 	const HOOK = 'reallycache_cart_probe';
 
 	/** Bumped when the algorithm changes — stale verdicts re-judge themselves. */
-	const ALGO_VERSION = 4;
+	const ALGO_VERSION = 5;
 
 	public static function register() {
 		add_action( self::HOOK, [ __CLASS__, 'run' ] );
 
 		add_action( 'switch_theme', function () {
-			Config::save( [ 'cart_cache_ok' => null, 'cart_probe_at' => 0 ] );
+			Config::save( [ 'cart_cache_ok' => null, 'cart_probe_at' => 0, 'cart_probe_diff' => '', 'cart_probe_note' => '' ] );
 		} );
 
 		add_action( 'admin_init', function () {
@@ -44,7 +44,7 @@ class CartProbe {
 			}
 			$config = Config::load();
 			if ( (int) ( $config['cart_probe_ver'] ?? 0 ) !== self::ALGO_VERSION ) {
-				Config::save( [ 'cart_cache_ok' => null, 'cart_probe_at' => 0, 'cart_probe_ver' => self::ALGO_VERSION ] );
+				Config::save( [ 'cart_cache_ok' => null, 'cart_probe_at' => 0, 'cart_probe_ver' => self::ALGO_VERSION, 'cart_probe_diff' => '', 'cart_probe_note' => '' ] );
 				$config = Config::load();
 			}
 			if ( (int) ( $config['cart_probe_at'] ?? 0 ) > time() - WEEK_IN_SECONDS ) {
@@ -87,6 +87,25 @@ class CartProbe {
 			return;
 		}
 
+		// One probe at a time, and not more than one per few minutes: the
+		// worker endpoint is public (token-gated), and each run costs the
+		// server several blocking self-requests — without this, a replayed
+		// token could stack concurrent runs into a self-inflicted DoS.
+		if ( ! add_option( 'reallycache_cartprobe_lock', (string) time(), '', 'no' ) ) {
+			$held = (int) get_option( 'reallycache_cartprobe_lock' );
+			if ( $held > time() - 3 * MINUTE_IN_SECONDS ) {
+				return;
+			}
+			update_option( 'reallycache_cartprobe_lock', (string) time(), false );
+		}
+
+		// The lock row is never deleted: its timestamp doubles as the
+		// cooldown, and an expired value reopens the gate above even if a
+		// run fatals mid-way.
+		self::probe();
+	}
+
+	private static function probe() {
 		// Both renders live and identical in treatment: the probe param is
 		// a meaningful query string, so the cache never serves or stores
 		// these requests — raw PHP output on both sides.
@@ -129,31 +148,75 @@ class CartProbe {
 	}
 
 	/**
-	 * The first differing window between the two normalized renders, with a
-	 * little context — for the settings screen, so a "safe mode" verdict on
-	 * a theme that looks fragments-based can be understood at a glance.
+	 * Up to three distinct differing regions between the two normalized
+	 * renders — for the settings screen, so all blockers show at once
+	 * instead of peeling one per probe run.
 	 */
 	private static function diff_snippet( $a, $b ) {
-		$la = strlen( $a );
-		$lb = strlen( $b );
-		$min = min( $la, $lb );
-
-		for ( $i = 0; $i < $min && $a[ $i ] === $b[ $i ]; $i ++ ) {
-			// advance to first difference
-		}
-		for ( $j = 0; $j < $min - $i && $a[ $la - 1 - $j ] === $b[ $lb - 1 - $j ]; $j ++ ) {
-			// advance from the end
-		}
-
-		$ctx    = 90;
-		$a_win  = substr( $a, max( 0, $i - $ctx ), ( $la - $j - $i ) + 2 * $ctx );
-		$b_win  = substr( $b, max( 0, $i - $ctx ), ( $lb - $j - $i ) + 2 * $ctx );
 		$squish = function ( $s ) {
 			return trim( preg_replace( '/\s+/', ' ', (string) $s ) );
 		};
 
-		return 'NO CART: …' . mb_substr( $squish( $a_win ), 0, 400 ) . "…\n\n"
-			. 'WITH CART: …' . mb_substr( $squish( $b_win ), 0, 400 ) . '…';
+		$out   = [];
+		$ctx   = 80;
+		$guard = 0;
+
+		while ( count( $out ) < 3 && $guard ++ < 6 ) {
+			$la  = strlen( $a );
+			$lb  = strlen( $b );
+			$min = min( $la, $lb );
+			if ( $min < 0 || ( 0 === $min && $la === $lb ) ) {
+				break;
+			}
+
+			// First difference.
+			for ( $i = 0; $i < $min && $a[ $i ] === $b[ $i ]; $i ++ );
+			if ( $i >= $min && $la === $lb ) {
+				break; // No further differences.
+			}
+			$pos = $i;
+
+			// Resync: the next 40-char run from A that also occurs in B
+			// after the difference — everything before it is this hunk.
+			// Runs with few distinct characters (whitespace, repeated
+			// markup) are skipped as anchors: they match at the wrong
+			// offset and misalign everything after them.
+			$a_end = min( $la, $pos + 4000 );
+			$sync  = false;
+			for ( $s = $pos + 1; $s < $a_end - 40; $s += 20 ) {
+				$needle = substr( $a, $s, 40 );
+				if ( count( array_unique( str_split( $needle ) ) ) < 5 ) {
+					continue;
+				}
+				$found = strpos( $b, $needle, $pos );
+				if ( false !== $found ) {
+					$sync = [ $s, $found ];
+					break;
+				}
+			}
+
+			$a_hunk_end = $sync ? $sync[0] : min( $la, $pos + 300 );
+			$b_hunk_end = $sync ? $sync[1] : min( $lb, $pos + 300 );
+
+			$side_a = mb_substr( $squish( substr( $a, max( 0, $pos - $ctx ), ( $a_hunk_end - $pos ) + 2 * $ctx ) ), 0, 300 );
+			$side_b = mb_substr( $squish( substr( $b, max( 0, $pos - $ctx ), ( $b_hunk_end - $pos ) + 2 * $ctx ) ), 0, 300 );
+
+			// A hunk whose two sides read identically is a resync artifact,
+			// not something a human can act on — drop it.
+			if ( $side_a !== $side_b ) {
+				$out[] = 'DIFF ' . ( count( $out ) + 1 ) . "\nNO CART: …" . $side_a . "…\nWITH CART: …" . $side_b . '…';
+			}
+
+			if ( ! $sync ) {
+				break;
+			}
+			// Continue after the resync point: both strings trimmed to
+			// their own sync position, so offsets stay aligned.
+			$a = substr( $a, $a_hunk_end );
+			$b = substr( $b, $b_hunk_end );
+		}
+
+		return implode( "\n\n", $out );
 	}
 
 	/** @return string|null Full HTML, or null when the fetch is unusable. */
@@ -176,7 +239,10 @@ class CartProbe {
 	 * variations-only catalogs (where a plain add would fail and the
 	 * probe used to give up), in-stock variation IDs are tried too —
 	 * WC_Cart::add_to_cart() accepts a variation ID directly and
-	 * resolves its parent and attributes.
+	 * resolves its parent and its explicitly-defined attributes.
+	 * Variations using "Any …" attributes are skipped: WooCommerce
+	 * rejects them without a concrete posted value ("%s is a required
+	 * field"), so they can never produce a cart cookie.
 	 *
 	 * @return array|null The cart cookies, or null when no product took.
 	 */
@@ -190,18 +256,30 @@ class CartProbe {
 				'limit'        => 5,
 				'return'       => 'ids',
 			] );
+			// Sampled wider than simple products because the "Any" filter
+			// below discards some of them before any HTTP attempt.
 			$candidates = array_merge( $candidates, wc_get_products( [
 				'status'       => 'publish',
 				'type'         => 'variation',
 				'stock_status' => 'instock',
-				'limit'        => 5,
+				'limit'        => 15,
 				'return'       => 'ids',
 			] ) );
 			// Only purchasable candidates are worth an HTTP attempt.
 			$candidates = array_values( array_filter( $candidates, function ( $id ) {
 				$product = wc_get_product( $id );
+				if ( ! $product || ! $product->is_purchasable() || ! $product->is_in_stock() ) {
+					return false;
+				}
+				if ( $product->is_type( 'variation' ) ) {
+					// An "Any" attribute comes back as '' here.
+					$attributes = (array) $product->get_attributes();
+					if ( count( array_filter( $attributes, 'strlen' ) ) !== count( $attributes ) ) {
+						return false;
+					}
+				}
 
-				return $product && $product->is_purchasable() && $product->is_in_stock();
+				return true;
 			} ) );
 		}
 		if ( empty( $candidates ) ) {
@@ -214,7 +292,9 @@ class CartProbe {
 			] );
 		}
 
-		foreach ( $candidates as $product_id ) {
+		// The first candidate almost always takes; the cap only bounds the
+		// worst case so a misbehaving catalog can't stretch the worker.
+		foreach ( array_slice( $candidates, 0, 8 ) as $product_id ) {
 			$response = wp_remote_post( add_query_arg( 'wc-ajax', 'add_to_cart', home_url( '/' ) ), [
 				'timeout'   => 12,
 				'sslverify' => apply_filters( 'https_local_ssl_verify', false ),
@@ -327,6 +407,12 @@ class CartProbe {
 		// wrongly failed an otherwise cart-identical theme (ordman).
 		$html = preg_replace( '/([?&;]hid=)[a-f0-9]{8,64}/i', '$1X', $html );
 		$html = preg_replace( '/<script\b[^>]*>(?:(?!<\/script>)[\s\S])*_wca\.push[\s\S]*?<\/script>/', '~S~', $html );
+		// GTM4WP embeds the full cart (cartContent) into its dataLayer
+		// script for analytics. On every cached store on earth this script
+		// freezes at the anonymous render and everyone lives with it —
+		// conversion events fire client-side and on uncached checkout
+		// pages regardless. Analytics payload, not page content.
+		$html = preg_replace( '/<script\b[^>]*>(?:(?!<\/script>)[\s\S])*dataLayer_content[\s\S]*?<\/script>/', '~S~', $html );
 
 		$html = apply_filters( 'reallycache_cart_probe_normalize', $html );
 

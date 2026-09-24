@@ -78,12 +78,26 @@ class CacheKey {
 			return '';
 		}
 
+		// Only cookies WooCommerce itself could have minted earn a variant:
+		// the cart hash is always a 32-hex md5, and the session cookie is
+		// customer||expiry||expiring||hash. Anything else is a forgery that
+		// would otherwise mint one disk entry per made-up cookie value —
+		// forged shapes fall through to the live-page bypass instead.
+		if ( ! preg_match( '/^[a-f0-9]{32}$/', (string) $_COOKIE['woocommerce_cart_hash'] ) ) {
+			return '';
+		}
+
 		$session = '';
 		foreach ( $_COOKIE as $name => $value ) {
 			if ( 0 === strpos( $name, 'wp_woocommerce_session_' ) ) {
 				$session = (string) $value;
 				break;
 			}
+		}
+		// Guest ids look like "t_<hex>", logged-in ids are numeric — then
+		// "||expiry||expiring||hash" (arrives url-encoded on some stacks).
+		if ( '' !== $session && ! preg_match( '/^[A-Za-z0-9_\-]+(?:\|\||%7C%7C)/', $session ) ) {
+			return '';
 		}
 
 		return '-c' . substr( md5( $_COOKIE['woocommerce_cart_hash'] . '|' . $session ), 0, 12 );

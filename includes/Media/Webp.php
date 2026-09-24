@@ -328,6 +328,14 @@ class Webp {
 			return 0;
 		}
 
+		// Same decompression-bomb bound for both decoders: the Imagick
+		// branch enforces it via resource limits, but GD would happily
+		// allocate gigabytes for a 12000×12000+ PNG.
+		$dims = @getimagesize( $path );
+		if ( ! is_array( $dims ) || (int) $dims[0] > 12000 || (int) $dims[1] > 12000 ) {
+			return 0;
+		}
+
 		$webp = $path . '.webp';
 		if ( is_file( $webp ) ) {
 			if ( ! $overwrite ) {

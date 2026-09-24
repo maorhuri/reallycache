@@ -84,6 +84,12 @@ class CartFragments {
 			@file_put_contents( $dir . '/.htaccess', "Deny from all\n" );
 		}
 
+		// Hard bound on entries a cookie-rotating client can mint; real
+		// stores stay far below it (one file per active cart per visitor).
+		if ( ! is_file( self::file_for( $key ) ) && count( glob( $dir . '/*.json' ) ?: [] ) >= 1000 ) {
+			return;
+		}
+
 		$tmp = self::file_for( $key ) . '.' . uniqid( '', true ) . '.tmp';
 		if ( false !== @file_put_contents( $tmp, $payload ) ) {
 			@rename( $tmp, self::file_for( $key ) );
@@ -104,13 +110,22 @@ class CartFragments {
 				@unlink( $file );
 			}
 		}
+		// Orphaned atomic-write leftovers (a crash between write and rename).
+		foreach ( glob( $dir . '/*.tmp' ) ?: [] as $file ) {
+			if ( filemtime( $file ) < $cutoff ) {
+				@unlink( $file );
+			}
+		}
 	}
 
 	private static function enabled() {
 		$config = Config::load();
 
+		// The cart hash is always a 32-hex md5 minted by WooCommerce; any
+		// other shape is a forged cookie that would mint a junk store entry
+		// per made-up value.
 		return ! empty( $config['cart_fragments_cache'] )
-			&& ! empty( $_COOKIE['woocommerce_cart_hash'] )
+			&& preg_match( '/^[a-f0-9]{32}$/', (string) ( $_COOKIE['woocommerce_cart_hash'] ?? '' ) )
 			&& ! self::is_logged_in();
 	}
 
@@ -151,7 +166,11 @@ class CartFragments {
 		$state  = (string) ( $_COOKIE['woocommerce_cart_hash'] ?? '' );
 		$state .= '|' . (string) ( $_COOKIE['woocommerce_items_in_cart'] ?? '' );
 
-		return 'frag_' . md5( $session . '|' . $state );
+		// The host keeps two sites sharing one wp-content (subdomain
+		// multisite) from resolving the same visitor to the same entry.
+		$host = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? '' ) );
+
+		return 'frag_' . md5( $host . '|' . $session . '|' . $state );
 	}
 
 	/**

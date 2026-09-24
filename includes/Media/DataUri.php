@@ -62,7 +62,10 @@ class DataUri {
 	/** @return string The replacement URL, or the original token on any doubt. */
 	private static function extract( $original, $payload, $dir, $base ) {
 		$binary = base64_decode( $payload, true );
-		if ( false === $binary || strlen( $binary ) < 1024 ) {
+		// The floor skips blobs too small to matter; the ceiling bounds
+		// what a single embedded blob can put on disk (the Figma case that
+		// motivated this feature embeds ~1–8MB images).
+		if ( false === $binary || strlen( $binary ) < 1024 || strlen( $binary ) > 12 * 1024 * 1024 ) {
 			return $original;
 		}
 
@@ -70,6 +73,18 @@ class DataUri {
 		$ext = self::type_from_magic( $binary );
 		if ( null === $ext ) {
 			return $original;
+		}
+
+		// A magic prefix alone would pass a polyglot (valid header, junk
+		// body) to a public URL — require the whole blob to parse as the
+		// image type the prefix claims.
+		if ( function_exists( 'getimagesizefromstring' ) ) {
+			$info = @getimagesizefromstring( $binary );
+			$mime = is_array( $info ) ? (string) ( $info['mime'] ?? '' ) : '';
+			$want = [ 'png' => 'image/png', 'jpg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp' ];
+			if ( $mime !== ( $want[ $ext ] ?? '' ) ) {
+				return $original;
+			}
 		}
 
 		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {

@@ -109,6 +109,13 @@ class Engine {
 	private function maybe_store( CacheKey $key, $buffer ) {
 		$cart_entry = false !== strpos( $key->variant, '-c' );
 
+		// A cart variant without WooCommerce means someone hand-crafted the
+		// cart cookies — nothing legitimate to cache, don't mint an entry.
+		if ( $cart_entry && ! class_exists( 'WooCommerce' ) ) {
+			header( 'X-ReallyCache: BYPASS-no-woo' );
+			return $buffer;
+		}
+
 		if ( strlen( $buffer ) < 255 || ! $this->gate->response_ok( $buffer, $cart_entry ) ) {
 			$this->driver->mark_uncacheable();
 			// The reason is gold when debugging "why is nothing cached":
