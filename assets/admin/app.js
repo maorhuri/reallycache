@@ -355,6 +355,10 @@
 		var ins  = r.active ? r.insights : null;
 		var body = switchRow( 'redis_object_cache', t( 'row_redis' ), t( 'row_redis_desc' ) );
 
+		if ( r.active && 'socket' === r.client ) {
+			body += '<div class="rc-row-desc" style="padding-block-end:6px">' + esc( t( 'redis_socket_note' ) ) + '</div>';
+		}
+
 		if ( ins ) {
 			body += '<div class="rc-media-stats">' +
 				'<div class="rc-media-stat">' + esc( t( 'redis_hit_rate' ) ) + '<strong data-el="redis-rate">' + ins.hit_rate + '%</strong></div>' +

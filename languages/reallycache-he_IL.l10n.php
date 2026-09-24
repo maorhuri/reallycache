@@ -103,6 +103,7 @@ return [
 		'Redis object cache' => 'קאש אובייקטים Redis',
 		'Redis detected on this server — cache database queries in memory, no extra plugin needed' => 'זוהה Redis על השרת — שאילתות למסד הנתונים נשמרות בזיכרון, בלי תוסף נוסף',
 		'Another plugin already manages the object cache on this site' => 'תוסף אחר כבר מנהל את קאש האובייקטים באתר הזה',
+		'Running in socket mode (the php-redis extension is not installed). Everything works; installing php-redis will make it even faster.' => 'רץ במצב socket (הרחבת php-redis לא מותקנת). הכול עובד; התקנת php-redis תעשה את זה אפילו מהיר יותר.',
 		'Live view of what WordPress keeps in memory' => 'מבט חי על מה שוורדפרס שומר בזיכרון',
 		'Hit rate' => 'אחוז פגיעות',
 		'Queries from RAM' => 'שאילתות מה-RAM',

@@ -22,6 +22,34 @@ class Manager {
 		];
 	}
 
+	/**
+	 * A connected client: phpredis when the extension exists, otherwise
+	 * the plugin's pure-PHP socket client (CloudPanel-style stacks run the
+	 * Redis service without the PHP extension).
+	 *
+	 * @return \Redis|SocketClient|null
+	 */
+	public static function client() {
+		try {
+			$p     = self::params();
+			$redis = class_exists( '\Redis' ) ? new \Redis() : new SocketClient();
+			$ok    = $p['path'] ? $redis->connect( $p['path'] ) : $redis->connect( $p['host'], $p['port'], 0.5 );
+			if ( $ok && $redis instanceof \Redis ) {
+				$redis->setOption( \Redis::OPT_READ_TIMEOUT, 1.0 );
+			}
+			if ( $ok && $p['password'] ) {
+				$ok = $redis->auth( $p['password'] );
+			}
+			if ( $ok && $p['database'] ) {
+				$ok = $redis->select( $p['database'] );
+			}
+
+			return $ok ? $redis : null;
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+	}
+
 	public static function available() {
 		static $available = null;
 		if ( null !== $available ) {
@@ -29,19 +57,14 @@ class Manager {
 		}
 
 		$available = false;
-		if ( extension_loaded( 'redis' ) ) {
-			try {
-				$p     = self::params();
-				$redis = new \Redis();
-				$ok    = $p['path'] ? $redis->connect( $p['path'] ) : $redis->connect( $p['host'], $p['port'], 0.5 );
-				if ( $ok && $p['password'] ) {
-					$ok = $redis->auth( $p['password'] );
-				}
-				$available = $ok && $redis->ping();
+		try {
+			$redis = self::client();
+			if ( $redis ) {
+				$available = (bool) $redis->ping();
 				$redis->close();
-			} catch ( \Throwable $e ) {
-				$available = false;
 			}
+		} catch ( \Throwable $e ) {
+			$available = false;
 		}
 
 		return $available;
@@ -84,6 +107,7 @@ class Manager {
 			'available' => self::available(),
 			'active'    => self::active(),
 			'foreign'   => self::foreign(),
+			'client'    => class_exists( '\Redis' ) ? 'phpredis' : 'socket',
 		];
 		if ( $status['active'] ) {
 			$status['insights'] = self::insights();
@@ -94,7 +118,7 @@ class Manager {
 
 	/** Redeploy our drop-in when the plugin ships a newer version of it. */
 	private static function maybe_refresh_dropin() {
-		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 3' ) ) {
+		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 4' ) ) {
 			copy( REALLYCACHE_DIR . '/includes/Redis/object-cache-dropin.php', self::dropin_path() );
 		}
 	}
@@ -121,20 +145,11 @@ class Manager {
 		}
 
 		try {
-			$p     = self::params();
-			$redis = new \Redis();
-			$ok    = $p['path'] ? $redis->connect( $p['path'] ) : $redis->connect( $p['host'], $p['port'], 0.5 );
-			if ( $ok && $p['password'] ) {
-				$ok = $redis->auth( $p['password'] );
-			}
-			if ( $ok && $p['database'] ) {
-				$redis->select( $p['database'] );
-			}
-			if ( ! $ok ) {
+			$redis = self::client();
+			if ( ! $redis ) {
 				return null;
 			}
 
-			$redis->setOption( \Redis::OPT_READ_TIMEOUT, 1.0 );
 			$prefix = self::key_prefix();
 
 			$info   = (array) $redis->info( 'memory' );

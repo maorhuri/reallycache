@@ -1,6 +1,6 @@
 <?php
 /**
- * ReallyCache Redis object cache drop-in. Drop-in version: 3
+ * ReallyCache Redis object cache drop-in. Drop-in version: 4
  *
  * Fail-open by design: if Redis is unreachable at any point, the cache
  * degrades to a per-request in-memory cache and the site keeps working.
@@ -14,12 +14,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// phpredis missing (removed after activation?) — fall back to core's default
-// behavior by simply not defining a persistent backend.
-if ( ! class_exists( 'Redis' ) ) {
-	require_once ABSPATH . WPINC . '/cache.php';
-	return;
-}
+// Without the php-redis extension a pure-PHP socket client from the plugin
+// serves as the backend (CloudPanel-style stacks run Redis without the
+// extension). If neither is available the class below still loads and runs
+// as a per-request memory cache — never a fatal.
 
 function wp_cache_init() {
 	$GLOBALS['wp_object_cache'] = new WP_Object_Cache();
@@ -136,6 +134,7 @@ class WP_Object_Cache {
 
 	public function __construct() {
 		// Site-owner tuning from the ReallyCache config file.
+		$plugin_dir  = '';
 		$config_file = WP_CONTENT_DIR . '/reallycache/config.php';
 		if ( is_readable( $config_file ) ) {
 			try {
@@ -147,6 +146,7 @@ class WP_Object_Cache {
 			if ( is_array( $config ) ) {
 				$this->non_persistent = array_values( array_filter( (array) ( $config['redis_excluded_groups'] ?? [] ) ) );
 				$this->max_ttl        = max( 0, (int) ( $config['redis_max_ttl'] ?? 0 ) );
+				$plugin_dir           = (string) ( $config['plugin_dir'] ?? '' );
 			}
 		}
 
@@ -179,9 +179,22 @@ class WP_Object_Cache {
 			$password = defined( 'WP_REDIS_PASSWORD' ) ? WP_REDIS_PASSWORD : '';
 			$database = defined( 'WP_REDIS_DATABASE' ) ? (int) WP_REDIS_DATABASE : 0;
 
-			$redis = new Redis();
-			$ok    = $path ? $redis->connect( $path ) : $redis->connect( $host, $port, 1.0 );
-			if ( $ok ) {
+			if ( class_exists( 'Redis' ) ) {
+				$redis = new Redis();
+			} else {
+				// No extension — the plugin's pure-PHP socket client.
+				if ( ! class_exists( '\ReallyCache\Redis\SocketClient' )
+					&& $plugin_dir && is_file( $plugin_dir . '/includes/Redis/SocketClient.php' ) ) {
+					require_once $plugin_dir . '/includes/Redis/SocketClient.php';
+				}
+				if ( ! class_exists( '\ReallyCache\Redis\SocketClient' ) ) {
+					return; // Memory-only fallback.
+				}
+				$redis = new \ReallyCache\Redis\SocketClient();
+			}
+
+			$ok = $path ? $redis->connect( $path ) : $redis->connect( $host, $port, 1.0 );
+			if ( $ok && $redis instanceof Redis ) {
 				$redis->setOption( Redis::OPT_READ_TIMEOUT, 1.0 );
 			}
 			if ( $ok && $password ) {

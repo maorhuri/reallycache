@@ -252,6 +252,7 @@ class AdminPage {
 			'row_redis'        => __( 'Redis object cache', 'reallycache' ),
 			'row_redis_desc'   => __( 'Redis detected on this server — cache database queries in memory, no extra plugin needed', 'reallycache' ),
 			'redis_foreign'    => __( 'Another plugin already manages the object cache on this site', 'reallycache' ),
+			'redis_socket_note' => __( 'Running in socket mode (the php-redis extension is not installed). Everything works; installing php-redis will make it even faster.', 'reallycache' ),
 			'redis_desc'       => __( 'Live view of what WordPress keeps in memory', 'reallycache' ),
 			'redis_hit_rate'   => __( 'Hit rate', 'reallycache' ),
 			'redis_hits_label' => __( 'Queries from RAM', 'reallycache' ),
