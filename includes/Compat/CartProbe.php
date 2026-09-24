@@ -44,6 +44,32 @@ class CartProbe {
 		} );
 	}
 
+	/** Fire the probe through a loopback worker — WP-Cron is not trusted. */
+	public static function kick() {
+		wp_remote_post( rest_url( 'reallycache/v1/cart-probe-worker' ), [
+			'blocking'  => false,
+			'timeout'   => 0.02,
+			'sslverify' => apply_filters( 'https_local_ssl_verify', false ),
+			'body'      => [ 'key' => \ReallyCache\Warmer::token() ],
+		] );
+	}
+
+	/** Called from /state polling: self-heals a probe that never ran. */
+	public static function maybe_pump() {
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			return;
+		}
+		$config = Config::load();
+		if ( null !== ( $config['cart_cache_ok'] ?? null ) || (int) ( $config['cart_probe_at'] ?? 0 ) > 0 ) {
+			return;
+		}
+		if ( get_transient( 'reallycache_cartprobe_kick' ) ) {
+			return;
+		}
+		set_transient( 'reallycache_cartprobe_kick', 1, 2 * MINUTE_IN_SECONDS );
+		self::kick();
+	}
+
 	public static function run() {
 		if ( ! class_exists( 'WooCommerce' ) ) {
 			return;
@@ -62,7 +88,7 @@ class CartProbe {
 		}
 
 		$args = [
-			'timeout'     => 20,
+			'timeout'     => 12,
 			'redirection' => 0,
 			'sslverify'   => apply_filters( 'https_local_ssl_verify', false ),
 			'user-agent'  => 'Mozilla/5.0 (X11; Linux x86_64) ReallyCache-CartProbe',

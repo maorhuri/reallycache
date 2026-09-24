@@ -24,6 +24,7 @@ class RestApi {
 			[ 'POST', '/warm-stop', 'warm_stop' ],
 			[ 'POST', '/webp-scan', 'webp_scan' ],
 			[ 'POST', '/redis-flush', 'redis_flush' ],
+			[ 'POST', '/cart-probe', 'cart_probe' ],
 			[ 'POST', '/dev-mode', 'dev_mode' ],
 		];
 
@@ -39,7 +40,7 @@ class RestApi {
 
 		// Worker endpoints: hit by cookie-less loopback requests, so they are
 		// public but demand the stored secret token instead.
-		foreach ( [ '/warm-worker' => [ 'ReallyCache\\Warmer', 'work' ], '/webp-worker' => [ 'ReallyCache\\Media\\Webp', 'work' ] ] as $path => $callback ) {
+		foreach ( [ '/warm-worker' => [ 'ReallyCache\\Warmer', 'work' ], '/webp-worker' => [ 'ReallyCache\\Media\\Webp', 'work' ], '/cart-probe-worker' => [ 'ReallyCache\\Compat\\CartProbe', 'run' ] ] as $path => $callback ) {
 			register_rest_route( 'reallycache/v1', $path, [
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
@@ -140,6 +141,13 @@ class RestApi {
 		return rest_ensure_response( $this->state() );
 	}
 
+	/** Manual "check now": runs the cart probe synchronously (a few seconds). */
+	public function cart_probe() {
+		Compat\CartProbe::run();
+
+		return rest_ensure_response( $this->state() );
+	}
+
 	public function redis_flush() {
 		if ( ! Redis\Manager::active() ) {
 			return new \WP_Error( 'reallycache_no_redis', __( 'The Redis object cache is not active.', 'reallycache' ), [ 'status' => 400 ] );
@@ -197,6 +205,7 @@ class RestApi {
 		// the background workers are alive or makes progress inline.
 		Warmer::maybe_pump();
 		Media\Webp::maybe_pump();
+		Compat\CartProbe::maybe_pump();
 
 		$config = Config::load();
 		$stats  = $this->engine->driver()->stats();

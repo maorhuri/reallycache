@@ -70,6 +70,7 @@ return [
 		'✓ Theme verified: identical HTML with a cart — visitors with items in their cart get cached pages too' => '✓ התבנית אומתה: ‏HTML זהה גם עם עגלה — גולשים עם פריטים בעגלה מקבלים עמודים מהקאש',
 		'This theme renders cart data server-side, so visitors with items in their cart get live pages (safe mode). Re-checked weekly.' => 'התבנית מציגה נתוני עגלה בצד השרת, ולכן גולשים עם פריטים בעגלה מקבלים עמודים חיים (מצב בטוח). נבדק מחדש אחת לשבוע.',
 		'Checking whether the theme supports cached pages for visitors with a cart…' => 'בודק אם התבנית תומכת בקאש גם לגולשים עם עגלה…',
+		'Check now' => 'בדיקה עכשיו',
 		'WooCommerce protection' => 'הגנת WooCommerce',
 		'Cart, checkout and account pages are detected from your WooCommerce settings and never cached; visitors with a cart always bypass the cache' => 'עמודי העגלה, התשלום והאזור האישי מזוהים אוטומטית מהגדרות ווקומרס ולא נשמרים בקאש, וגולשים עם עגלה תמיד עוקפים את הקאש',
 		'Never cache these URLs' => 'לעולם לא לשמור בקאש את הכתובות האלה',

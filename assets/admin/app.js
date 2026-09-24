@@ -321,7 +321,8 @@
 		var text  = null === v || undefined === v ? t( 'woo_cart_probing' ) : ( v ? t( 'woo_cart_ok' ) : t( 'woo_cart_safe' ) );
 		var style = 'padding-block-end:10px' + ( true === v ? ';color:var(--rc-ok)' : '' );
 
-		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) + '</div>';
+		return '<div class="rc-row-desc" style="' + style + '">' + esc( text ) +
+			' <button type="button" class="rc-progress-stop" data-action="cart-probe">' + esc( t( 'btn_cart_probe' ) ) + '</button></div>';
 	}
 
 	function tabsHtml() {
@@ -864,6 +865,16 @@
 					window.localStorage.setItem( 'reallycache-tab', activeTab );
 				} catch ( e ) {}
 				render();
+				break;
+			case 'cart-probe':
+				target.disabled = true;
+				target.textContent = '…';
+				api( 'cart-probe', {} ).then( function ( payload ) {
+					applyState( payload );
+				} ).catch( function () {
+					target.disabled = false;
+					toast( t( 'toast_error' ), false );
+				} );
 				break;
 			case 'redis-flush':
 				busyButton( target, true );
