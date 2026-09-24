@@ -79,6 +79,9 @@ class RestApi {
 		if ( array_key_exists( 'redis_max_ttl', $body ) ) {
 			$changes['redis_max_ttl'] = max( 0, (int) $body['redis_max_ttl'] );
 		}
+		if ( array_key_exists( 'warm_max', $body ) ) {
+			$changes['warm_max'] = max( 0, (int) $body['warm_max'] );
+		}
 		foreach ( [ 'excluded_uris', 'excluded_user_agents', 'redis_excluded_groups' ] as $list ) {
 			if ( array_key_exists( $list, $body ) ) {
 				$lines             = is_array( $body[ $list ] ) ? $body[ $list ] : preg_split( '/\r\n|\r|\n/', (string) $body[ $list ] );
@@ -178,6 +181,7 @@ class RestApi {
 				'ttl'                  => (int) $config['ttl'],
 				'separate_mobile'      => (bool) $config['separate_mobile'],
 				'smart_cache'            => (bool) $config['smart_cache'],
+				'warm_max'               => (int) ( $config['warm_max'] ?? 500 ),
 				'woocommerce_protection' => (bool) $config['woocommerce_protection'],
 				'webp_enabled'           => (bool) $config['webp_enabled'],
 				'webp_on_upload'         => (bool) $config['webp_on_upload'],

@@ -23,45 +23,129 @@ class Warmer {
 	const TICK_HOOK    = 'reallycache_warm_tick';
 	const LOCK         = 'reallycache_warm_lock';
 
-	/** Queue a full-site warm-up and start processing. */
+	/**
+	 * Start a full-site warm-up. The queue never holds the whole site:
+	 * a cursor pulls the next 200 posts by ID as the queue drains, so even
+	 * a 100,000-product catalog warms gradually with bounded memory and
+	 * bounded option size. Already-fresh pages are skipped at fetch time.
+	 */
 	public static function seed_site() {
-		$urls = [ home_url( '/' ) ];
+		$config = Config::load();
+		$max    = max( 0, (int) ( $config['warm_max'] ?? 500 ) );
 
-		$types = array_filter( get_post_types( [ 'public' => true ] ), 'is_post_type_viewable' );
-		$ids   = get_posts( [
-			'post_type'      => array_values( $types ),
-			'post_status'    => 'publish',
-			'posts_per_page' => (int) apply_filters( 'reallycache_warm_max_posts', 500 ),
-			'orderby'        => 'modified',
-			'fields'         => 'ids',
-			'no_found_rows'  => true,
-		] );
-		foreach ( $ids as $id ) {
-			$urls[] = get_permalink( $id );
+		update_option( self::STATE_OPTION, [
+			'done'    => 0,
+			'total'   => self::estimate_total( $max ),
+			'current' => '',
+			'updated' => time(),
+			'seed'    => [ 'cursor' => 0, 'seeded' => 0, 'terms_offset' => 0, 'phase' => 'posts', 'max' => $max ],
+		], false );
+		delete_option( self::QUEUE_OPTION );
+
+		self::enqueue( [ home_url( '/' ) ] );
+		self::refill();
+	}
+
+	/** @return string[] Viewable public post types. */
+	private static function viewable_types() {
+		return array_values( array_filter( get_post_types( [ 'public' => true ] ), 'is_post_type_viewable' ) );
+	}
+
+	/** Cheap count of what a full warm-up will cover, for the progress bar. */
+	private static function estimate_total( $max ) {
+		$posts = 0;
+		foreach ( self::viewable_types() as $type ) {
+			$counts = wp_count_posts( $type );
+			$posts += (int) ( $counts->publish ?? 0 );
+		}
+		if ( $max > 0 ) {
+			$posts = min( $posts, $max );
 		}
 
-		$taxonomies = get_taxonomies( [ 'public' => true ] );
-		$terms      = get_terms( [ 'taxonomy' => array_values( $taxonomies ), 'hide_empty' => true, 'number' => 200 ] );
-		if ( is_array( $terms ) ) {
+		$taxonomies = array_values( get_taxonomies( [ 'public' => true ] ) );
+		$terms      = $taxonomies ? wp_count_terms( [ 'taxonomy' => $taxonomies, 'hide_empty' => true ] ) : 0;
+		$terms      = is_wp_error( $terms ) ? 0 : (int) $terms;
+
+		return 1 + $posts + $terms;
+	}
+
+	/**
+	 * Top the queue up with the next slice of the site. Returns true when
+	 * anything was added or seeding is still in progress.
+	 */
+	public static function refill() {
+		$state = self::state();
+		$seed  = is_array( $state['seed'] ?? null ) ? $state['seed'] : null;
+		if ( ! $seed || 'done' === $seed['phase'] ) {
+			return false;
+		}
+
+		global $wpdb;
+		$urls = [];
+
+		if ( 'posts' === $seed['phase'] ) {
+			$remaining = $seed['max'] > 0 ? $seed['max'] - (int) $seed['seeded'] : PHP_INT_MAX;
+			if ( $remaining < 1 ) {
+				$seed['phase'] = 'terms';
+			} else {
+				$types = self::viewable_types();
+				$in    = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+				// Keyset pagination on the primary key: OFFSET on a large
+				// table gets slower the deeper it goes; ID > cursor doesn't.
+				$sql = $wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts} WHERE post_type IN ($in) AND post_status = 'publish' AND ID > %d ORDER BY ID ASC LIMIT %d",
+					array_merge( $types, [ (int) $seed['cursor'], min( 200, $remaining ) ] )
+				);
+				$ids = array_map( 'intval', (array) $wpdb->get_col( $sql ) );
+
+				foreach ( $ids as $id ) {
+					$link = get_permalink( $id );
+					if ( $link ) {
+						$urls[] = $link;
+					}
+				}
+				if ( $ids ) {
+					$seed['cursor']  = max( $ids );
+					$seed['seeded'] += count( $ids );
+				}
+				if ( count( $ids ) < min( 200, $remaining ) ) {
+					$seed['phase'] = 'terms';
+				}
+			}
+		}
+
+		if ( 'terms' === $seed['phase'] && count( $urls ) < 100 ) {
+			$taxonomies = array_values( get_taxonomies( [ 'public' => true ] ) );
+			$terms      = $taxonomies ? get_terms( [
+				'taxonomy'   => $taxonomies,
+				'hide_empty' => true,
+				'number'     => 200,
+				'offset'     => (int) $seed['terms_offset'],
+			] ) : [];
+			$terms = is_wp_error( $terms ) ? [] : (array) $terms;
+
 			foreach ( $terms as $term ) {
 				$link = get_term_link( $term );
 				if ( ! is_wp_error( $link ) ) {
 					$urls[] = $link;
 				}
 			}
+			$seed['terms_offset'] += count( $terms );
+			if ( count( $terms ) < 200 ) {
+				$seed['phase'] = 'done';
+			}
 		}
 
-		// Pages a real visitor already warmed are skipped — warming them
-		// again would just overwrite an identical fresh copy for nothing.
-		$engine = \ReallyCache\Engine::instance();
-		if ( $engine ) {
-			$urls = array_values( array_filter( $urls, function ( $url ) use ( $engine ) {
-				return ! $engine->url_is_cached( $url );
-			} ) );
+		$state            = self::state();
+		$state['seed']    = $seed;
+		$state['updated'] = time();
+		update_option( self::STATE_OPTION, $state, false );
+
+		if ( $urls ) {
+			self::enqueue( $urls );
 		}
 
-		update_option( self::STATE_OPTION, [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => time() ], false );
-		self::enqueue( $urls );
+		return ! empty( $urls ) || 'done' !== $seed['phase'];
 	}
 
 	/** Add URLs to the queue (deduped) and make sure processing runs. */
@@ -76,7 +160,9 @@ class Warmer {
 		update_option( self::QUEUE_OPTION, $queue, false );
 
 		$state          = self::state();
-		$state['total'] = (int) $state['done'] + count( $queue );
+		// Grow-only: during a seeded run the total is a site-wide estimate
+		// that a small in-flight queue must not shrink.
+		$state['total'] = max( (int) $state['total'], (int) $state['done'] + count( $queue ) );
 		update_option( self::STATE_OPTION, $state, false );
 
 		self::kick();
@@ -151,11 +237,22 @@ class Warmer {
 	public static function step( $count ) {
 		$queue = (array) get_option( self::QUEUE_OPTION, [] );
 		if ( empty( $queue ) ) {
-			return false;
+			if ( ! self::refill() ) {
+				return false;
+			}
+			$queue = (array) get_option( self::QUEUE_OPTION, [] );
+			if ( empty( $queue ) ) {
+				return false;
+			}
 		}
 
 		$batch = array_splice( $queue, 0, max( 1, $count ) );
 		update_option( self::QUEUE_OPTION, $queue, false );
+
+		// Top up before the queue runs dry, so seeding and warming overlap.
+		if ( count( $queue ) < 20 ) {
+			self::refill();
+		}
 
 		$config = Config::load();
 		$engine = \ReallyCache\Engine::instance();
@@ -235,15 +332,16 @@ class Warmer {
 
 	/** @return array{done:int,total:int,queued:int,running:bool,current:string} */
 	public static function status() {
-		$state  = self::state();
-		$queued = self::queued();
+		$state   = self::state();
+		$queued  = self::queued();
+		$seeding = is_array( $state['seed'] ?? null ) && 'done' !== ( $state['seed']['phase'] ?? 'done' );
 
 		return [
 			'done'    => (int) $state['done'],
 			'total'   => (int) $state['total'],
 			'queued'  => $queued,
 			'current' => (string) $state['current'],
-			'running' => $queued > 0,
+			'running' => $queued > 0 || $seeding,
 		];
 	}
 
@@ -255,6 +353,9 @@ class Warmer {
 		$state            = self::state();
 		$state['current'] = '';
 		$state['updated'] = time();
+		if ( is_array( $state['seed'] ?? null ) ) {
+			$state['seed']['phase'] = 'done'; // No more refills.
+		}
 		update_option( self::STATE_OPTION, $state, false );
 	}
 
@@ -288,6 +389,6 @@ class Warmer {
 	private static function state() {
 		$state = get_option( self::STATE_OPTION, [] );
 
-		return wp_parse_args( is_array( $state ) ? $state : [], [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => 0 ] );
+		return wp_parse_args( is_array( $state ) ? $state : [], [ 'done' => 0, 'total' => 0, 'current' => '', 'updated' => 0, 'seed' => null ] );
 	}
 }

@@ -468,6 +468,16 @@
 				'</div>' +
 				switchRow( 'separate_mobile', t( 'row_mobile' ), t( 'row_mobile_desc' ) ) +
 				switchRow( 'smart_cache', t( 'row_smart' ), t( 'row_smart_desc' ) ) +
+				'<div class="rc-row">' +
+					'<div class="rc-row-text"><div class="rc-row-title">' + esc( t( 'row_warm_max' ) ) + '</div>' +
+						'<div class="rc-row-desc">' + esc( t( 'row_warm_max_desc' ) ) + '</div></div>' +
+					'<select class="rc-select" data-field="warm_max">' +
+						[ 500, 2000, 10000, 0 ].map( function ( n ) {
+							var label = 0 === n ? t( 'warm_max_all' ) : tf( 'warm_max_pages', formatNumber( n ) );
+							return '<option value="' + n + '"' + ( model.warm_max === n ? ' selected' : '' ) + '>' + esc( label ) + '</option>';
+						} ).join( '' ) +
+					'</select>' +
+				'</div>' +
 				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +

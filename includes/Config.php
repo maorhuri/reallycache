@@ -24,6 +24,8 @@ class Config {
 			// Smart cache: content changes purge exactly the affected URLs
 			// (page, home, archives) and re-warm them in the background.
 			'smart_cache'           => true,
+			// Pages a full warm-up covers; 0 = the whole site, gradually.
+			'warm_max'              => 500,
 			// Query parameters that never change page content. A request whose
 			// entire query string consists of these is served the base page.
 			'tracking_params'       => [
