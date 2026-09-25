@@ -269,8 +269,6 @@
 				switchRow( 'webp_on_upload', t( 'row_webp_upload' ), t( 'row_webp_upload_desc' ) ) +
 				switchRow( 'lcp_boost', t( 'row_lcp' ), t( 'row_lcp_desc' ) ) +
 				switchRow( 'image_dims', t( 'row_imgdims' ), t( 'row_imgdims_desc' ) ) +
-				switchRow( 'font_display_swap', t( 'row_fonts' ), t( 'row_fonts_desc' ) ) +
-				switchRow( 'defer_js_bots', t( 'row_deferjs' ), t( 'row_deferjs_desc' ) ) +
 				switchRow( 'datauri_extract', t( 'row_datauri' ), t( 'row_datauri_desc' ) ) +
 				'<div class="rc-media-stats">' +
 					webpDonut( w ) +
@@ -563,6 +561,8 @@
 				'</div>' +
 				( state.woo_active ? switchRow( 'woocommerce_protection', t( 'row_woo' ), t( 'row_woo_desc' ) ) + '<div data-el="woonote">' + wooCartNote() + '</div>' : '' ) +
 				switchRow( 'browser_cache', t( 'row_bcache' ), t( 'row_bcache_desc' ) ) +
+				switchRow( 'font_display_swap', t( 'row_fonts' ), t( 'row_fonts_desc' ) ) +
+				switchRow( 'defer_js_bots', t( 'row_deferjs' ), t( 'row_deferjs_desc' ) ) +
 				textareaRow( 'excluded_uris', t( 'row_uris' ), t( 'row_uris_desc' ), '/members/*' ) +
 				textareaRow( 'excluded_user_agents', t( 'row_uas' ), t( 'row_uas_desc' ), 'SemrushBot' ) +
 			'</div>' +

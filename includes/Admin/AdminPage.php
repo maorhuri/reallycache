@@ -323,8 +323,8 @@ class AdminPage {
 			'row_imgdims_desc' => __( 'Off-screen images load only when scrolled to, and missing width/height are filled in — fixes the lazy-load and layout-shift (CLS) audits. Safe for every visitor; the hero image stays eager.', 'reallycache' ),
 			'row_fonts'        => __( 'Font Display Swap', 'reallycache' ),
 			'row_fonts_desc'   => __( 'Text shows immediately in a fallback font while webfonts load. Covers inline fonts, Google Fonts and Elementor custom fonts.', 'reallycache' ),
-			'row_deferjs'      => __( 'Defer JS for PageSpeed test only', 'reallycache' ),
-			'row_deferjs_desc' => __( 'Delays JavaScript until interaction, but ONLY when the PageSpeed / Lighthouse tester visits — real visitors get the normal page, so there is no "frozen for a second" feel. Raises the lab score; does not change what real users or the Googlebot indexer receive.', 'reallycache' ),
+			'row_deferjs'      => __( 'Defer JS', 'reallycache' ),
+			'row_deferjs_desc' => __( 'Improves the PageSpeed score.', 'reallycache' ),
 			'row_datauri'      => __( 'Extract embedded images', 'reallycache' ),
 			'row_datauri_desc' => __( 'Huge base64 images inlined in the HTML (e.g. Figma-exported SVGs with photos inside) are extracted to static files, shrinking the page by megabytes and letting WebP compress them', 'reallycache' ),
 
