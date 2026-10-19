@@ -19,10 +19,10 @@ use ReallyCache\Config;
  *      scripts that embed cart state) and compare byte-for-byte.
  *
  * Equal → cart_cache_ok: visitors with a cart get cached pages, and the
- * fragments JS paints their real cart on load — ezCache's speed with an
- * actual proof behind it. Any residue, fetch failure or unpurchasable
- * catalog keeps the safe mode. Re-runs weekly and on theme switch; the
- * dashboard's status polling self-heals a probe that never ran.
+ * fragments JS paints their real cart on load — full speed with an actual
+ * proof behind it. Any residue, fetch failure or unpurchasable catalog
+ * keeps the safe mode. Re-runs weekly and on theme switch; the dashboard's
+ * status polling self-heals a probe that never ran.
  */
 class CartProbe {
 
