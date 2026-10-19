@@ -118,7 +118,7 @@ class Manager {
 
 	/** Redeploy our drop-in when the plugin ships a newer version of it. */
 	private static function maybe_refresh_dropin() {
-		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 5' ) ) {
+		if ( self::active() && false === strpos( (string) file_get_contents( self::dropin_path() ), 'Drop-in version: 6' ) ) {
 			copy( REALLYCACHE_DIR . '/includes/Redis/object-cache-dropin.php', self::dropin_path() );
 		}
 	}

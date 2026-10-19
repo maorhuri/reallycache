@@ -28,10 +28,53 @@ class PurgeManager {
 		add_action( 'update_option_sidebars_widgets', [ $this, 'purge_all' ] );
 		add_action( 'update_option_permalink_structure', [ $this, 'purge_all' ] );
 		add_action( 'update_option_posts_per_page', [ $this, 'purge_all' ] );
+
+		// A plugin, theme or WordPress-core update can change the markup of
+		// every page, so the whole cache is cleared and rebuilt. Covers
+		// manual updates/installs, background auto-updates and core updates.
+		add_action( 'upgrader_process_complete', [ $this, 'on_upgrade' ], 10, 2 );
+		add_action( 'automatic_updates_complete', [ $this, 'purge_and_rebuild' ] );
+		add_action( '_core_updated_successfully', [ $this, 'purge_and_rebuild' ] );
+
+		// Saving a file in Appearance → Theme File Editor or Plugins →
+		// Plugin File Editor also changes output site-wide. WordPress fires
+		// no post-save action, so the rebuild is queued on shutdown, after
+		// the file has been written by the AJAX handler.
+		add_action( 'wp_ajax_edit-theme-plugin-file', [ $this, 'on_file_editor_save' ], 1 );
 	}
 
 	public function purge_all() {
 		$this->engine->purge_all();
+	}
+
+	/**
+	 * Clear everything, then rebuild the cache in the background. The
+	 * rebuild is debounced so a burst of events (a bulk plugin update, a
+	 * developer saving a file repeatedly) clears each time but warms once.
+	 */
+	public function purge_and_rebuild() {
+		$this->engine->purge_all();
+
+		if ( false === apply_filters( 'reallycache_auto_rebuild', true ) ) {
+			return;
+		}
+		if ( get_transient( 'reallycache_rebuild_lock' ) ) {
+			return;
+		}
+		set_transient( 'reallycache_rebuild_lock', 1, 30 );
+		Warmer::seed_site();
+	}
+
+	/** Only real code updates/installs — not translation-pack refreshes. */
+	public function on_upgrade( $upgrader, $extra ) {
+		$type = $extra['type'] ?? '';
+		if ( in_array( $type, [ 'plugin', 'theme', 'core' ], true ) ) {
+			$this->purge_and_rebuild();
+		}
+	}
+
+	public function on_file_editor_save() {
+		add_action( 'shutdown', [ $this, 'purge_and_rebuild' ], 0 );
 	}
 
 	public function on_post_status_change( $new_status, $old_status, $post ) {

@@ -1,6 +1,6 @@
 <?php
 /**
- * ReallyCache Redis object cache drop-in. Drop-in version: 5
+ * ReallyCache Redis object cache drop-in. Drop-in version: 6
  *
  * Fail-open by design: if Redis is unreachable at any point, the cache
  * degrades to a per-request in-memory cache and the site keeps working.
@@ -149,6 +149,19 @@ class WP_Object_Cache {
 				$plugin_dir           = (string) ( $config['plugin_dir'] ?? '' );
 			}
 		}
+
+		// Groups derived from the filesystem or cheap to recompute must never
+		// be persisted. The 'plugins'/'themes' lists are the important ones:
+		// get_plugins()/wp_get_themes() cache their results here, and a plugin
+		// or theme deleted outside WordPress (FTP, a host panel, a failed
+		// update) leaves a stale list in Redis forever — WordPress then keeps
+		// trying to read the vanished folder, spraying opendir() warnings on
+		// every admin request. Keeping these request-local re-scans the real
+		// filesystem each time. Merged with, never overridden by, user config.
+		$this->non_persistent = array_values( array_unique( array_merge(
+			$this->non_persistent,
+			[ 'counts', 'plugins', 'themes', 'theme_json' ]
+		) ) );
 
 		// Values are HMAC-signed before unserialize(): on shared Redis a
 		// neighbor must not be able to plant serialized payloads or forge
